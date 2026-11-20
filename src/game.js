@@ -5,6 +5,7 @@
   const I = window.CatnapI18n;
   const A = window.CatnapAudio;
   const LEVELS = window.CatnapLevels;
+  const ACH = window.CatnapAch;
   const t = I.t;
   const $ = id => document.getElementById(id);
   const EMPTY = 0, MARK = 1, CAT = 2;
@@ -30,7 +31,7 @@
     clear() { try { Object.keys(localStorage).filter(k => k.startsWith('catnap:')).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } }
   };
   const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, skin: 'ginger' });
-  const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'] });
+  const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'], ach: {}, flags: {} });
   let settings = Object.assign(defaultSettings(), store.get('settings', {}));
   let progress = Object.assign(defaultProgress(), store.get('progress', {}));
   const saveSettings = () => store.set('settings', settings);
@@ -496,9 +497,24 @@
       d.best = Math.max(d.best, d.streak);
     }
     const fresh = SKINS.filter(s => s.ok(progress) && !before.has(s.id));
+    const chIdx = meta.kind === 'level' ? ACH.chapterOf(meta.level) : -1;
+    const chapterNow = chIdx >= 0 && !progress.flags?.['ch' + chIdx] && ACH.chapterDone(progress, ACH.CHAPTERS[chIdx]);
+    if (chapterNow) { progress.flags = progress.flags || {}; progress.flags['ch' + chIdx] = true; }
+    const achNew = ACH.check(progress, { kind: meta.kind, tier: meta.tier, n: P.n, hints: hintsUsed, elapsed, date: meta.date, isToday: meta.date === todayKey(), hour: new Date().getHours() });
     saveProgress(); save();
     showWin(true);
-    if (fresh.length) setTimeout(() => { A.play('unlock'); toast(t('unlocked', { name: t('skins')[fresh[0].id] })); }, 1400);
+    const notes = [];
+    if (chapterNow) notes.push(t('chapterComplete', { name: t('chapters')[ACH.CHAPTERS[chIdx].id] }));
+    fresh.forEach(sk => notes.push(t('unlocked', { name: t('skins')[sk.id] })));
+    achNew.forEach(id => notes.push(t('achUnlocked', { name: t('ach')[id][0] })));
+    notes.forEach((msg, k) => setTimeout(() => { A.play('unlock'); toast(msg); }, 1400 + k * 2600));
+  }
+  function award(flag) {
+    progress.flags = progress.flags || {};
+    progress.flags[flag] = true;
+    const achNew = ACH.check(progress, null);
+    saveProgress();
+    achNew.forEach((id, k) => setTimeout(() => { A.play('unlock'); toast(t('achUnlocked', { name: t('ach')[id][0] })); }, 300 + k * 2600));
   }
   function showWin(celebrate) {
     $('board').classList.add('won');
@@ -587,7 +603,7 @@
       const k = meta?.kind === 'level' ? meta.level : store.get('level', 1);
       const st = progress.stars[k] || 0;
       mb.innerHTML = `<button class="navBtn" id="lvPrev" type="button" aria-label="${t('prev')}"${k <= 1 ? ' disabled' : ''}><svg><use href="#i-left"/></svg></button>
-        <button class="pill lvlBtn" id="lvOpen" type="button">${t('levelName', { k, total: LEVELS.length })} <span class="lvlStars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></button>
+        <button class="pill lvlBtn" id="lvOpen" type="button"><span class="lvlMain">${t('levelName', { k, total: LEVELS.length })} <span class="lvlStars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></span><small class="lvlCh">${t('chapters')[ACH.CHAPTERS[ACH.chapterOf(k)].id]}</small></button>
         <button class="navBtn" id="lvNext" type="button" aria-label="${t('nextLevel')}"${k >= LEVELS.length || !levelOpen(k + 1) ? ' disabled' : ''}><svg><use href="#i-right"/></svg></button>`;
       $('lvPrev').onclick = () => loadLevel(k - 1);
       $('lvNext').onclick = () => loadLevel(k + 1);
@@ -665,7 +681,9 @@
     $('levelGrid').innerHTML = LEVELS.map((L, i) => {
       const k = i + 1, open = levelOpen(k), st = progress.stars[k] || 0;
       const tierColor = ['r2', 'r1', 'r0', 'r4'][L.tier];
-      return `<button type="button" class="lvl${k === cur ? ' cur' : ''}" data-k="${k}" style="--rc:var(--${tierColor})"${open ? '' : ' disabled'} aria-label="${t('levelName', { k, total: LEVELS.length })}, ${t('tier' + L.tier)}">
+      const ch = ACH.CHAPTERS.find(c => c.from === k);
+      const head = ch ? `<h3 class="chHead" style="--rc:var(--${ch.color})"><span>${t('chapterLabel', { k: ACH.CHAPTERS.indexOf(ch) + 1 })} · ${t('chapters')[ch.id]}</span><span class="chStars"><svg><use href="#i-star"/></svg>${ACH.chapterStars(progress, ch)}/30</span></h3>` : '';
+      return `${head}<button type="button" class="lvl${k === cur ? ' cur' : ''}" data-k="${k}" style="--rc:var(--${tierColor})"${open ? '' : ' disabled'} aria-label="${t('levelName', { k, total: LEVELS.length })}, ${t('tier' + L.tier)}">
         ${open ? `${k}<small>${L.n}×${L.n}</small><span class="st">${starIcons(st)}</span>` : `<svg class="lkb"><use href="#i-lock"/></svg><small>${k}</small>`}</button>`;
     }).join('');
     $('levelGrid').onclick = e => {
@@ -702,7 +720,9 @@
       <h3>${t('statsBest')}</h3>
       ${anyBest ? `<div class="scroll"><table><thead><tr><th>${t('recBoard')}</th>${[0, 1, 2, 3].map(x => `<th>${t('tier' + x)}</th>`).join('')}</tr></thead><tbody>
         ${sizes.map(n => `<tr><td>${n}×${n}</td>${[0, 1, 2, 3].map(x => { const v = progress.best[`${n}-${x}`]; return `<td>${v != null ? fmt(v) : (LG.TIER_SIZES[x].includes(n) ? '—' : '')}</td>`; }).join('')}</tr>`).join('')}
-      </tbody></table></div>` : `<p class="small">${t('statsNone')}</p>`}`;
+      </tbody></table></div>` : `<p class="small">${t('statsNone')}</p>`}
+      <h3>${t('achievements')} <span class="small">${t('achCount', { k: Object.keys(progress.ach || {}).length, total: ACH.ACHIEVEMENTS.length })}</span></h3>
+      <div class="achGrid">${ACH.ACHIEVEMENTS.map(a => { const got = !!(progress.ach || {})[a.id]; const [name, desc] = t('ach')[a.id]; return `<div class="ach${got ? ' got' : ''}"><svg><use href="#i-trophy"/></svg><div><b>${name}</b><span>${desc}</span></div></div>`; }).join('')}</div>`;
     openDlg('dlgStats');
   }
   $('btnStats').addEventListener('click', openStats);
@@ -784,6 +804,7 @@
   });
 
   // ---------- boot ----------
+  if (ACH.check(progress, null).length) saveProgress();
   applyLook();
   setLang(I.detect(store.get('lang', null)));
   function route(h, fallback) {
