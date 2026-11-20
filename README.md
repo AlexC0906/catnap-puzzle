@@ -47,8 +47,9 @@ Every puzzle has exactly one solution and can be solved with pure logic. You nev
 
 | Action | Mouse / touch | Keyboard |
 |---|---|---|
-| Place × | one tap | `X` |
-| Place a cat | two taps (or right-click) | `C` |
+| Place / clear × | one tap | `X` |
+| Place a cat | double-tap (or right-click) | `C` |
+| Remove a cat | one tap on it | `C` |
 | Several × at once | drag across cells | |
 | Move around the board | | arrow keys |
 | Undo | Undo button | `Z` / `Ctrl+Z` |

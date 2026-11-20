@@ -413,7 +413,8 @@
   });
 
   // ---------- input ----------
-  let drag = null, prevBad = new Set(), prevDone = null;
+  let drag = null, prevBad = new Set(), prevDone = null, lastTap = null;
+  const DOUBLE_TAP_MS = 380;
   const canPlay = () => P && !won && !paused && $('loading').hidden;
   let redoStack = [];
   function setCell(i, v) {
@@ -445,12 +446,25 @@
     if (!el || !canPlay()) return;
     e.preventDefault();
     const i = +el.dataset.i;
-    batch = []; startClock();
+    const now = performance.now();
+    startClock();
     let next;
-    if (e.button === 2) { next = cells[i] === CAT ? EMPTY : CAT; drag = null; }
-    else {
-      next = cells[i] === EMPTY ? MARK : cells[i] === MARK ? CAT : EMPTY;
-      drag = next === MARK ? { mode: MARK, seen: new Set([i]) } : next === EMPTY ? { mode: EMPTY, seen: new Set([i]) } : null;
+    if (e.button === 2) {
+      batch = [];
+      next = cells[i] === CAT ? EMPTY : CAT; drag = null; lastTap = null;
+    } else if (lastTap && lastTap.i === i && now - lastTap.time < DOUBLE_TAP_MS && history[history.length - 1] === lastTap.batch) {
+      // double tap: undo the first tap, then toggle a cat
+      history.pop();
+      cells[i] = lastTap.prev;
+      batch = [];
+      next = lastTap.prev === CAT ? EMPTY : CAT;
+      drag = null; lastTap = null;
+    } else {
+      // single tap: × on, × off (a single tap on a cat removes it)
+      batch = [];
+      next = cells[i] === EMPTY ? MARK : EMPTY;
+      drag = next === MARK ? { mode: MARK, seen: new Set([i]) } : cells[i] === MARK ? { mode: EMPTY, seen: new Set([i]) } : null;
+      lastTap = { i, time: now, prev: cells[i], batch };
     }
     setCell(i, next); soundFor(next, i);
     update();
@@ -463,6 +477,7 @@
     const i = +el.dataset.i;
     if (drag.seen.has(i)) return;
     drag.seen.add(i);
+    lastTap = null;
     if (drag.mode === MARK && cells[i] === EMPTY) { setCell(i, MARK); A.play('mark'); }
     else if (drag.mode === EMPTY && cells[i] === MARK) setCell(i, EMPTY);
     update();
@@ -497,7 +512,7 @@
     if (!el || !canPlay()) return;
     const i = +el.dataset.i;
     batch = []; startClock();
-    const v = (cells[i] + 1) % 3;
+    const v = cells[i] === EMPTY ? MARK : EMPTY;
     setCell(i, v); soundFor(v, i);
     commit();
   });
