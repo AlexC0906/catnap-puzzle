@@ -1,9 +1,11 @@
 # 🐱 Catnap
 
-A cozy logic puzzle with cats that runs right in your browser. No install, no dependencies.
-Available in **English** and **Romanian** (*Mustăți*). The language follows your browser, and you can switch it with one button.
+A cozy logic puzzle with cats that runs right in your browser. No install, no dependencies, no build step.
+Available in **English** and **Romanian** (*Mustăți*).
 
 **▶ Play: https://alexc0906.github.io/catnap-puzzle/**
+
+![Catnap screenshot: an 8×8 board with three cats placed and a hint explaining the next move](docs/screenshot.png)
 
 ## Rules
 
@@ -14,7 +16,26 @@ The N×N board is split into N colored cushions. Place N cats so that:
 3. every **colored cushion** has exactly one cat;
 4. **no two cats touch**, not even diagonally.
 
-Every puzzle has exactly one solution, so you never need to guess.
+Every puzzle has exactly one solution and can be solved with pure logic. You never need to guess.
+
+## Game modes
+
+| Mode | What it is |
+|---|---|
+| **Daily** | One puzzle per day, the same for everyone. Easy on Monday, Expert on Sunday. Keep your streak going 🔥 |
+| **Journey** | 60 hand-ordered levels from 5×5 Easy to 10×10 Expert. Earn up to 3 stars per level. The first levels teach you as you play. |
+| **Free play** | Endless puzzles. Pick any difficulty (Easy, Medium, Hard, Expert) and board size (5×5 to 10×10). |
+
+## Features
+
+- **Explained hints**: a hint doesn't just reveal a cell. It tells you *why*, e.g. “Every free spot in the yellow cushion is on row 3, so the rest of row 3 gets ×”, and highlights the cells involved.
+- **Coach mode**: explains every next step automatically, great for learning.
+- **8 cats to unlock** (Ginger, Tabby, Coal, Tuxedo, Calico, Siamese, Snow, Galaxy) with Journey stars and daily streaks.
+- Statistics: puzzles solved, streaks, best time for every size and difficulty.
+- Synthesized sound effects (Web Audio, no audio files), including a little meow.
+- Undo, pause, auto-× around cats, mistake highlighting, color-blind labels.
+- Shareable links for every puzzle, plus a copyable result.
+- Light and dark theme, works great on phones, **installable and playable offline** (PWA).
 
 ## Controls
 
@@ -24,49 +45,56 @@ Every puzzle has exactly one solution, so you never need to guess.
 | Place a cat | two taps (or right-click) | `C` |
 | Several × at once | drag across cells | |
 | Move around the board | | arrow keys |
-| Undo | “Undo” button | `Ctrl+Z` |
+| Undo | Undo button | `Z` / `Ctrl+Z` |
+| Hint | Hint button | `H` |
+| Pause | Pause button | `P` |
 
-## Features
+## How it works
 
-- **Daily puzzle**: the same 8×8 for everyone, every day
-- Boards from **5×5 to 10×10**, generated endlessly
-- Every puzzle has its own link (`#p8-4242`) you can send to a friend
-- Mistakes are highlighted instantly; optional auto-× around cats
-- Hints, timer, personal records and progress saved locally
-- Wordle-style emoji result to copy and share
-- Light and dark theme, works on phones
-- English / Romanian toggle
-
-## Run locally
-
-Open `index.html` in a browser. That's it.
-
-## Tests
-
-```bash
-npm test
-```
-
-For every board size, the tests check that generated puzzles are valid, that every region is connected, and that each puzzle has **exactly one solution**.
-
-## How the generator works
-
+**Generator** (`src/engine.js`)
 1. Randomly place N cats that follow the rules (backtracking).
-2. Grow N colored regions outward from each cat (random flood fill).
-3. A solver counts solutions. If it finds a second one, it moves one cell between regions to rule it out, then checks again.
+2. Grow N cushions outward from each cat (random flood fill).
+3. A brute-force solver counts solutions. If it finds a second one, a cell is moved between cushions to rule it out, then it checks again.
 
-Everything is seeded, so the same seed always produces the same puzzle. That's how the daily puzzle stays the same for everyone.
+**Logic solver** (`src/logic.js`) solves the puzzle the way a person would, one deduction at a time:
+
+| Technique | Idea | Difficulty |
+|---|---|---|
+| Single | A row, column or cushion has only one free cell left | Easy |
+| Confine | A cushion fits in one row/column, or a row/column fits in one cushion | Medium |
+| Blocker | A cat on this cell would leave some row, column or cushion empty | Medium |
+| Subset | k cushions fit in k rows/columns (or the reverse) | Hard |
+| Contradiction | Trying a cat here leads to a dead end a few steps later | Expert |
+
+The hardest technique a puzzle needs decides its difficulty. The same solver powers the explained hints. Everything is seeded, so the same seed always gives the same puzzle; that is how the daily puzzle is the same for everyone. Generation runs in a Web Worker so the page never freezes.
 
 ## Project structure
 
 ```
-index.html       page markup
-style.css        all styles (light + dark theme)
-src/engine.js    RNG, solver, generator (works in browser and Node)
-src/game.js      game UI and input
-src/i18n.js      English + Romanian strings
-test/            Node tests for the engine
+index.html            page markup and dialogs
+style.css             all styles (light + dark theme, cat skins)
+src/engine.js         seeded RNG, brute-force solver, generator
+src/logic.js          human-style logic solver, difficulty rating
+src/levels.js         the 60 Journey levels (generated)
+src/game.js           game UI, modes, hints, progress
+src/i18n.js           English + Romanian strings
+src/audio.js          synthesized sound effects
+src/worker.js         background puzzle generation
+scripts/build-levels.js   regenerates src/levels.js
+sw.js, manifest.webmanifest   offline support / install
+test/                 Node tests
 ```
+
+## Development
+
+```bash
+npm test               # run all tests
+npm run build:levels   # regenerate the Journey levels
+```
+
+To play locally, serve the folder with any static server (for example `python3 -m http.server`) and open it in a browser. Opening `index.html` directly also works.
+
+The tests check, for every size and difficulty, that puzzles are valid, have exactly one solution, can be solved by logic alone, and that every logic step is correct. CI runs them on every push.
 
 ## License
 
