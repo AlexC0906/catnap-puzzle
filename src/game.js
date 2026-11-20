@@ -113,6 +113,7 @@
     start(p, { kind: 'free', id: `f-${free.n}-${free.tier}-${free.seed}`, tier: p.tier });
   }
   function loadMode(m, opts = {}) {
+    if (M) quitMarathon(true);
     mode = m; store.set('mode', m);
     renderTabs();
     if (m === 'daily') loadDaily(opts.date);
@@ -144,6 +145,7 @@
     try { window.history.replaceState(null, '', '#' + (m.kind === 'daily' ? (m.date === todayKey() ? 'daily' : m.id) : m.id)); } catch { /* sandboxed */ }
     buildBoard($('board'), P, true);
     $('win').hidden = true; $('pauseOv').hidden = true;
+    if (m.kind !== 'marathon') $('timerLabel').textContent = t('time');
     clearHint();
     setMood(''); poke();
     renderName(); renderModebar();
@@ -253,7 +255,7 @@
   }
 
   function save() {
-    if (!meta) return;
+    if (!meta || meta.kind === 'marathon') return;
     store.set('save:' + meta.id, { cells, elapsed: currentElapsed(), hints: hintsUsed, won, stars: lastStars });
   }
 
@@ -539,7 +541,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden && ticking && !won) togglePause(true); });
 
   // ---------- hints ----------
-  const coachActive = () => P && !won && meta && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
+  const coachActive = () => P && !won && meta && meta.kind !== 'marathon' && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
   const colorName = g => t('colors')[!editing && P && P.colors ? P.colors[g] : g];
   function unitName(u, cap) {
     if (u.kind === 'region') return t(cap ? 'Region' : 'region', { color: colorName(u.index) });
@@ -599,7 +601,7 @@
   function showHint(h, counts = true) {
     if (!h) return;
     hint = h;
-    if (counts) { hintsUsed++; A.play('hint'); }
+    if (counts) { hintsUsed++; A.play('hint'); if (M && M.running) { M.timeLeft -= MAR.hintCost; floatText('−20 s', true); } }
     $('hintText').textContent = h.text;
     $('hintBox').hidden = false;
     $('hintApply').hidden = !h.fix.length;
@@ -635,7 +637,8 @@
     return (h ? h + ':' + pad(m) : m) + ':' + pad(sec);
   }
   setInterval(() => {
-    if (P) $('timer').textContent = fmt(currentElapsed());
+    if (M && M.running) marathonTick();
+    else if (P) $('timer').textContent = fmt(currentElapsed());
     const cd = $('winCountdown');
     if (!cd.hidden) {
       const now = new Date(), next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -648,6 +651,7 @@
   function finish() {
     elapsed = currentElapsed(); ticking = false; won = true;
     clearHint();
+    if (meta.kind === 'marathon') { marathonSolved(); return; }
     const stars = hintsUsed === 0 ? 3 : hintsUsed <= 2 ? 2 : 1;
     lastStars = stars;
     const before = new Set(SKINS.filter(s => s.ok(progress)).map(s => s.id));
@@ -755,7 +759,7 @@
   }
   function renderName() {
     if (!meta) return;
-    $('puzzleName').textContent = meta.kind === 'daily' ? t('dailyName', { date: meta.date }) : meta.kind === 'level' ? t('levelName', { k: meta.level, total: LEVELS.length }) : meta.kind === 'custom' ? t('customName') : t('freeName', { id: `${P.n}-${meta.tier}-${free.seed}` });
+    $('puzzleName').textContent = meta.kind === 'daily' ? t('dailyName', { date: meta.date }) : meta.kind === 'level' ? t('levelName', { k: meta.level, total: LEVELS.length }) : meta.kind === 'custom' ? t('customName') : meta.kind === 'marathon' ? `${t('marathon')} · #${(M?.k || 0) + 1}` : t('freeName', { id: `${P.n}-${meta.tier}-${free.seed}` });
     const b = $('tierBadge');
     b.className = 'badge t' + meta.tier;
     b.textContent = `${t('tier' + meta.tier)} · ${P.n}×${P.n}`;
@@ -793,14 +797,20 @@
       $('lvPrev').onclick = () => loadLevel(k - 1);
       $('lvNext').onclick = () => loadLevel(k + 1);
       $('lvOpen').onclick = openLevels;
+    } else if (M) {
+      mb.innerHTML = `<div class="marStats"><span>${t('marScore')} <b id="marScore">${M.score || 0}</b></span><span>${t('marSolved')} <b id="marSolved">${M.solved || 0}</b></span></div>
+        <span class="grow"></span>${M.running ? `<button class="pill" id="marSkipBtn" type="button">${t('marSkip')}</button>` : ''}<button class="pill" id="marQuitBtn" type="button">${t('marQuit')}</button>`;
+      if (M.running) $('marSkipBtn').onclick = skipMarathon;
+      $('marQuitBtn').onclick = () => quitMarathon(false);
     } else {
       const sizes = [5, 6, 7, 8, 9, 10];
-      mb.innerHTML = `<div class="seg" role="group" aria-label="${t('tierLabel')}">${[0, 1, 2, 3].map(x => `<button type="button" data-tier="${x}" aria-pressed="${free.tier === x}">${t('tier' + x)}</button>`).join('')}</div>
+      mb.innerHTML = `<button class="pill primary" id="marBtn" type="button"><svg class="ico"><use href="#i-clock"/></svg>${t('marathon')}</button><div class="seg" role="group" aria-label="${t('tierLabel')}">${[0, 1, 2, 3].map(x => `<button type="button" data-tier="${x}" aria-pressed="${free.tier === x}">${t('tier' + x)}</button>`).join('')}</div>
         <div class="seg" role="group" aria-label="${t('sizesLabel')}">${sizes.map(s => `<button type="button" data-n="${s}" aria-pressed="${free.n === s}"${LG.TIER_SIZES[free.tier].includes(s) ? '' : ' disabled'}>${s}</button>`).join('')}</div>
-        <span class="grow"></span><button class="pill primary" id="freeNew" type="button">${t('newGame')}</button>`;
+        <span class="grow"></span><button class="pill" id="freeNew" type="button">${t('newGame')}</button>`;
       mb.querySelectorAll('[data-tier]').forEach(b => b.onclick = () => loadFree(free.n, +b.dataset.tier));
       mb.querySelectorAll('[data-n]').forEach(b => b.onclick = () => loadFree(+b.dataset.n, free.tier));
       $('freeNew').onclick = () => loadFree(free.n, free.tier);
+      $('marBtn').onclick = openMarathon;
     }
   }
   document.querySelectorAll('.tabs [data-mode]').forEach(b => b.addEventListener('click', () => { if (b.dataset.mode !== mode) loadMode(b.dataset.mode); }));
@@ -969,6 +979,7 @@
     $('pause').textContent = t(paused ? 'resume' : 'pause');
     renderName(); renderModebar();
     if (editing) { renderPalette(); validateEditor(); }
+    if (M && M.running) $('timerLabel').textContent = t('timeLeft');
     if (won) { renderWinText(); showWinButtons(); }
     if (hint) { const h = computeHint(); if (h) { hint = h; $('hintText').textContent = h.text; } }
     if (P) update();
@@ -989,6 +1000,121 @@
     else if (k === 'p' && !e.ctrlKey && !e.metaKey) togglePause();
     else if (k === 'escape' && hint) { clearHint(); update(); }
   });
+
+  // ---------- marathon ----------
+  const MAR = { time: 300000, bonus: 15000, hintCost: 20000, skipCost: 30000 };
+  const MAR_SEQ = [[5, 0], [5, 0], [6, 0], [6, 1], [6, 1], [7, 0], [7, 1], [7, 1], [8, 1], [7, 2], [8, 1], [8, 2], [9, 1], [8, 2], [9, 2], [10, 1], [9, 2], [10, 2]];
+  let M = null;
+  const marPlan = k => MAR_SEQ[Math.min(k, MAR_SEQ.length - 1)];
+  function marGen(k) { const [n, tier] = marPlan(k); return generate(n, tier, LG.mixSeed(M.seed, k)); }
+  function floatText(txt, neg) {
+    const el = document.createElement('div');
+    el.className = 'floatTxt' + (neg ? ' neg' : '');
+    el.textContent = txt;
+    $('floatLayer').appendChild(el);
+    setTimeout(() => el.remove(), 1300);
+  }
+  function marCard(html) { $('marCard').innerHTML = html; $('marOv').hidden = false; }
+  function openMarathon() {
+    if (M) return;
+    M = { running: false, score: 0, solved: 0 };
+    if (P && ticking) { elapsed = currentElapsed(); ticking = false; }
+    const best = progress.marathon?.best || 0;
+    marCard(`<svg class="marIcon"><use href="#i-clock"/></svg><h2>${t('marTitle')}</h2><p>${t('marRules')}</p>${best ? `<p class="small">${t('marBest', { k: best })}</p>` : ''}
+      <div class="winBtns"><button type="button" class="primary" id="marGo">${t('marStart')}</button><button type="button" id="marNo">${t('marQuit')}</button></div>`);
+    $('marGo').onclick = startMarathon;
+    $('marNo').onclick = () => quitMarathon(false);
+    renderModebar();
+  }
+  async function startMarathon() {
+    M = { running: true, score: 0, solved: 0, k: 0, seed: (Math.random() * 1e9) >>> 0, timeLeft: MAR.time, last: performance.now(), loading: true };
+    $('marOv').hidden = true;
+    $('timerLabel').textContent = t('timeLeft');
+    renderModebar();
+    await marNext();
+  }
+  async function marNext() {
+    const run = M; if (!run) return;
+    run.loading = true;
+    const tok = ++loadToken;
+    const p = await (run.prefetch || marGen(run.k));
+    if (M !== run || tok !== loadToken || !p) return;
+    start(p, { kind: 'marathon', id: 'marathon', tier: p.tier });
+    run.loading = false; run.last = performance.now();
+    ticking = true; startTime = performance.now();
+    run.prefetch = marGen(run.k + 1);
+    renderModebar();
+  }
+  function marathonTick() {
+    const now = performance.now();
+    if (!paused && !M.loading) M.timeLeft -= now - M.last;
+    M.last = now;
+    const left = Math.max(0, M.timeLeft);
+    $('timer').textContent = fmt(left + 999);
+    document.querySelector('.stats').classList.toggle('low', left < 30000);
+    if (left <= 0) endMarathon();
+  }
+  function marathonSolved() {
+    const pts = P.n * P.n * (1 + meta.tier);
+    M.score += pts; M.solved++; M.timeLeft += MAR.bonus;
+    progress.solved++;
+    progress.byTier[meta.tier] = (progress.byTier[meta.tier] || 0) + 1;
+    const achNew = ACH.check(progress, { kind: 'marathon', tier: meta.tier, n: P.n, hints: hintsUsed, elapsed, hour: new Date().getHours() });
+    saveProgress();
+    A.play('cat'); setTimeout(() => A.play('unlock'), 120);
+    floatText(`+${pts}  +15 s`);
+    $('board').classList.add('won');
+    els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
+    setMood('happy', 900);
+    achNew.forEach((id, k) => setTimeout(() => toast(t('achUnlocked', { name: t('ach')[id][0] })), 600 + k * 2600));
+    renderModebar();
+    M.k++;
+    M.loading = true;
+    setTimeout(() => { if (M && M.running) marNext(); }, 850);
+  }
+  function skipMarathon() {
+    if (!M || !M.running || M.loading) return;
+    M.timeLeft -= MAR.skipCost;
+    floatText('−30 s', true);
+    M.k++;
+    marNext();
+  }
+  function endMarathon() {
+    const run = M;
+    run.running = false;
+    ticking = false; won = true;
+    ['undo', 'hint', 'pause'].forEach(id => { $(id).disabled = true; });
+    clearHint();
+    document.querySelector('.stats').classList.remove('low');
+    progress.marathon = progress.marathon || { best: 0, bestSolved: 0, played: 0 };
+    const pm = progress.marathon;
+    pm.played++;
+    const record = run.score > pm.best;
+    if (record) pm.best = run.score;
+    pm.bestSolved = Math.max(pm.bestSolved || 0, run.solved);
+    const achNew = ACH.check(progress, null);
+    saveProgress();
+    A.play('win');
+    if (record && run.score > 0) confetti();
+    setMood('happy');
+    marCard(`<svg class="marIcon"><use href="#i-clock"/></svg><h2>${t('marOver')}</h2><div class="bigScore">${run.score}</div><p>${t(run.solved === 1 ? 'marResult1' : 'marResult', { k: run.solved, s: run.score })}</p>
+      <p class="winExtra">${record && run.score > 0 ? t('marNew') : t('marBest', { k: pm.best })}</p>
+      <div class="winBtns"><button type="button" id="marShareBtn">${t('share')}</button><button type="button" class="primary" id="marAgain">${t('marAgain')}</button></div><p id="marMsg" class="small" aria-live="polite"></p>`);
+    $('marAgain').onclick = () => { M = null; openMarathon(); };
+    $('marShareBtn').onclick = async () => {
+      try { await navigator.clipboard.writeText(t('marShare', { k: run.solved, s: run.score }).replace(/\\n/g, '\n') + '\n' + SITE); $('marMsg').textContent = t('copied'); }
+      catch { $('marMsg').textContent = t('copyFail'); }
+    };
+    achNew.forEach((id, k) => setTimeout(() => { A.play('unlock'); toast(t('achUnlocked', { name: t('ach')[id][0] })); }, 1400 + k * 2600));
+    renderModebar();
+  }
+  function quitMarathon(silent) {
+    M = null;
+    $('marOv').hidden = true;
+    document.querySelector('.stats').classList.remove('low');
+    $('timerLabel').textContent = t('time');
+    if (!silent) loadFree(free.n, free.tier, free.seed);
+  }
 
   // ---------- mascot ----------
   const mascot = $('mascot');

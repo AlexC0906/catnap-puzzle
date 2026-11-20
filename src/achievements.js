@@ -39,7 +39,9 @@
     { id: 'wanderer', test: p => CHAPTERS.every(c => chapterDone(p, c)) },
     { id: 'constellation', test: p => totalStars(p) >= 180 },
     { id: 'owl', test: (p, e) => !!e && e.hour >= 0 && e.hour < 5 },
-    { id: 'architect', test: p => !!(p.flags && p.flags.created) }
+    { id: 'architect', test: p => !!(p.flags && p.flags.created) },
+    { id: 'marathon', test: p => (p.marathon && p.marathon.bestSolved || 0) >= 5 },
+    { id: 'ultra', test: p => (p.marathon && p.marathon.bestSolved || 0) >= 12 }
   ];
 
   // Returns the ids that are newly earned and records them in p.ach.

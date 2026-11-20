@@ -191,6 +191,23 @@ summary{font:600 19px Fredoka,sans-serif;cursor:pointer;min-height:32px}
 .rules ol{margin:6px 0;padding-left:22px}
 .foot{text-align:center;padding:10px 16px 28px}
 
+/* marathon */
+.marOv{background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(3px)}
+.marCard{background:var(--card);border:3px solid var(--line);border-radius:22px;padding:22px;text-align:center;max-width:380px;width:100%;box-shadow:0 8px 0 var(--line)}
+.marCard h2{font-size:28px;margin:4px 0 8px}
+.marCard p{margin:6px 0}
+.marCard .bigScore{font:700 54px/1 Fredoka,sans-serif;color:var(--accent);margin:8px 0 2px}
+.marCard .winBtns button{min-height:44px}
+.marIcon{width:64px;height:64px;color:var(--accent)}
+.marStats{display:flex;gap:14px;align-items:center;font-weight:800;flex-wrap:wrap}
+.marStats b{font:600 22px Fredoka,sans-serif;font-variant-numeric:tabular-nums}
+.stats.low .big{color:var(--bad);animation:pulse 1s ease-in-out infinite}
+.floatLayer{position:absolute;inset:0;pointer-events:none;z-index:8;display:grid;place-items:center}
+.floatTxt{position:absolute;font:700 34px Fredoka,sans-serif;color:var(--accent);text-shadow:0 2px 0 var(--card),0 0 12px var(--card);animation:floatUp 1.2s ease-out forwards;white-space:nowrap}
+.floatTxt.neg{color:var(--bad)}
+@keyframes floatUp{0%{transform:translateY(20px) scale(.7);opacity:0}20%{transform:translateY(0) scale(1.1);opacity:1}100%{transform:translateY(-70px) scale(1);opacity:0}}
+@keyframes pulse{50%{transform:scale(1.06)}}
+
 /* workshop */
 .editPanel{display:none}
 .side.editing>*:not(.editPanel){display:none}
