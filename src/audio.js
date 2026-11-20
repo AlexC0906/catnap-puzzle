@@ -64,6 +64,12 @@
       [523, 659, 784, 1047].forEach((f, k) => tone({ type: 'triangle', f0: f, dur: 0.22, vol: 0.28, delay: k * 0.09 }));
       meow(1.05, 0.45);
     },
+    chime(k = 0) {
+      const scale = [784, 880, 988, 1175, 1319, 1568, 1760, 1976, 2349, 2637];
+      const f = scale[Math.max(0, Math.min(scale.length - 1, k))];
+      tone({ type: 'sine', f0: f, dur: 0.35, vol: 0.12 });
+      tone({ type: 'sine', f0: f * 1.5, dur: 0.25, vol: 0.05, delay: 0.05 });
+    },
     unlock() { [784, 988, 1175, 1568].forEach((f, k) => tone({ f0: f, dur: 0.16, vol: 0.2, delay: k * 0.07 })); },
     meow
   };

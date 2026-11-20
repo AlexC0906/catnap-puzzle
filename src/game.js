@@ -4,6 +4,7 @@
   const LG = window.CatnapLogic;
   const I = window.CatnapI18n;
   const A = window.CatnapAudio;
+  const MU = window.CatnapMusic;
   const LEVELS = window.CatnapLevels;
   const ACH = window.CatnapAch;
   const t = I.t;
@@ -30,7 +31,7 @@
     set(k, v) { try { localStorage.setItem('catnap:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
     clear() { try { Object.keys(localStorage).filter(k => k.startsWith('catnap:')).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } }
   };
-  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, skin: 'ginger' });
+  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, music: false, skin: 'ginger' });
   const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'], ach: {}, flags: {} });
   let settings = Object.assign(defaultSettings(), store.get('settings', {}));
   let progress = Object.assign(defaultProgress(), store.get('progress', {}));
@@ -135,7 +136,7 @@
     if (!P.colors) P.colors = assignColors(P.n, P.regions);
     const N = P.n * P.n;
     const saved = store.get('save:' + m.id, null);
-    cells = new Array(N).fill(EMPTY); history = []; redoStack = []; batch = null; prevBad = new Set();
+    cells = new Array(N).fill(EMPTY); history = []; redoStack = []; batch = null; prevBad = new Set(); prevDone = null;
     elapsed = 0; ticking = false; won = false; paused = false; hintsUsed = 0; hint = null;
     lastStars = 0; lastRecord = false;
     if (saved && saved.cells && saved.cells.length === N) {
@@ -242,6 +243,15 @@
       el.setAttribute('aria-label', t('cell', { r: ((i / n) | 0) + 1, c: i % n + 1 }) + (s === CAT ? t('cellCat') : s === MARK ? t('cellMark') : ''));
     });
     $('board').classList.toggle('hinting', !!hint && (hf.size > 0 || ht.size > 0 || hp != null));
+    // cushions that just received their (non-conflicting) cat
+    const done = new Set();
+    geom.regs.forEach((rc, g) => { const cs = rc.filter(i => cells[i] === CAT); if (cs.length === 1 && !bad.has(cs[0])) done.add(g); });
+    if (prevDone && count < n) {
+      const fresh = [...done].filter(g => !prevDone.has(g));
+      fresh.forEach(g => geom.regs[g].forEach(i => { const el = els[i]; el.classList.remove('glow'); void el.offsetWidth; el.classList.add('glow'); }));
+      if (fresh.length) setTimeout(() => A.play('chime', done.size - 1), 90);
+    }
+    prevDone = done;
     if (newlyBad.length) {
       newlyBad.forEach(i => { const c = els[i].querySelector('.c'); if (c) { c.classList.remove('hiss'); void c.getBBox; requestAnimationFrame(() => c.classList.add('hiss')); } });
       setMood('scared', 1300);
@@ -403,7 +413,7 @@
   });
 
   // ---------- input ----------
-  let drag = null, prevBad = new Set();
+  let drag = null, prevBad = new Set(), prevDone = null;
   const canPlay = () => P && !won && !paused && $('loading').hidden;
   let redoStack = [];
   function setCell(i, v) {
@@ -538,7 +548,14 @@
   }
   $('pause').addEventListener('click', () => togglePause());
   $('resumeBtn').addEventListener('click', () => togglePause(false));
-  document.addEventListener('visibilitychange', () => { if (document.hidden && ticking && !won) togglePause(true); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && ticking && !won) togglePause(true);
+    if (document.hidden) MU.stop(); else if (settings.music) MU.start();
+  });
+  // browsers only allow audio after a user gesture
+  const firstGesture = () => { if (settings.music) MU.start(); window.removeEventListener('pointerdown', firstGesture); window.removeEventListener('keydown', firstGesture); };
+  window.addEventListener('pointerdown', firstGesture);
+  window.addEventListener('keydown', firstGesture);
 
   // ---------- hints ----------
   const coachActive = () => P && !won && meta && meta.kind !== 'marathon' && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
@@ -924,6 +941,7 @@
 
   function renderSettings() {
     $('optSound').checked = settings.sound;
+    $('optMusic').checked = settings.music;
     $('optAutoX').checked = settings.autoX;
     $('optErr').checked = settings.showErr;
     $('optCb').checked = settings.cb;
@@ -939,6 +957,7 @@
   $('btnSettings').addEventListener('click', () => { renderSettings(); $('resetMsg').textContent = ''; resetArmed = false; $('resetAll').textContent = t('resetProgress'); openDlg('dlgSettings'); });
   const bindOpt = (id, key, after) => $(id).addEventListener('change', e => { settings[key] = e.target.checked; saveSettings(); after && after(); });
   bindOpt('optSound', 'sound', () => { A.enabled = settings.sound; if (settings.sound) A.play('meow'); });
+  bindOpt('optMusic', 'music', () => { if (settings.music) MU.start(); else MU.stop(); });
   bindOpt('optAutoX', 'autoX', update);
   bindOpt('optErr', 'showErr', update);
   bindOpt('optCb', 'cb', applyLook);
