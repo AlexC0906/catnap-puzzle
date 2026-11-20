@@ -7,6 +7,7 @@
   const MU = window.CatnapMusic;
   const LEVELS = window.CatnapLevels;
   const ACH = window.CatnapAch;
+  const LB = window.CatnapLB || { enabled: false };
   const t = I.t;
   const $ = id => document.getElementById(id);
   const EMPTY = 0, MARK = 1, CAT = 2;
@@ -31,7 +32,7 @@
     set(k, v) { try { localStorage.setItem('catnap:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
     clear() { try { Object.keys(localStorage).filter(k => k.startsWith('catnap:')).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } }
   };
-  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, music: false, skin: 'ginger' });
+  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, music: false, playerName: '', skin: 'ginger' });
   const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'], ach: {}, flags: {} });
   let settings = Object.assign(defaultSettings(), store.get('settings', {}));
   let progress = Object.assign(defaultProgress(), store.get('progress', {}));
@@ -146,6 +147,7 @@
     try { window.history.replaceState(null, '', '#' + (m.kind === 'daily' ? (m.date === todayKey() ? 'daily' : m.id) : m.id)); } catch { /* sandboxed */ }
     buildBoard($('board'), P, true);
     $('win').hidden = true; $('pauseOv').hidden = true;
+    setWinLB('', null);
     if (m.kind !== 'marathon') $('timerLabel').textContent = t('time');
     clearHint();
     setMood(''); poke();
@@ -744,7 +746,7 @@
     else if (meta.kind === 'daily') { next.hidden = false; next.textContent = t('playFree'); }
     else if (meta.kind === 'custom') { next.hidden = false; next.textContent = t('wsEdit'); }
     else { next.hidden = false; next.textContent = t('next'); }
-    if (celebrate) { A.play('win'); confetti(); }
+    if (celebrate) { A.play('win'); confetti(); submitWin(); } else showSavedRank();
     setTimeout(() => { if (won) $('win').hidden = false; }, celebrate ? 900 : 0);
     renderModebar();
   }
@@ -814,7 +816,8 @@
       const streak = d.last === todayKey() || d.last === yesterdayKey() ? d.streak : 0;
       const isToday = key === todayKey();
       mb.innerHTML = `<div class="dayInfo"><span>${longDate(key)}</span><span class="badge t${tier}">${t('tier' + tier)} · ${n}×${n}</span>${streak ? `<span class="streak" title="${t('statsStreak')}"><svg><use href="#i-flame"/></svg>${streak}</span>` : ''}${d.done[key] ? '<span class="streak">✓</span>' : ''}</div>
-        <span class="grow"></span>${isToday ? '' : `<button class="pill" id="dToday" type="button">${t('today')}</button>`}<button class="pill" id="dArchive" type="button"><svg class="ico"><use href="#i-cal"/></svg>${t('archive')}</button>`;
+        <span class="grow"></span>${isToday ? '' : `<button class="pill" id="dToday" type="button">${t('today')}</button>`}<button class="pill" id="dArchive" type="button"><svg class="ico"><use href="#i-cal"/></svg>${t('archive')}</button>${LB.enabled ? `<button class="pill" id="dLB" type="button"><svg class="ico"><use href="#i-trophy"/></svg>${t('lb')}</button>` : ''}`;
+      if (LB.enabled) $('dLB').onclick = () => openLB('daily');
       $('dArchive').onclick = () => openArchive(key);
       if (!isToday) $('dToday').onclick = () => loadDaily();
     } else if (mode === 'workshop') {
@@ -1078,6 +1081,7 @@
     renderName(); renderModebar();
     if (editing) { renderPalette(); validateEditor(); }
     if (M && M.running) $('timerLabel').textContent = t('timeLeft');
+    if ($('dlgLB').open) renderLB();
     if (won) { renderWinText(); showWinButtons(); }
     if (hint) { const h = computeHint(); if (h) { hint = h; $('hintText').textContent = h.text; } }
     if (P) update();
@@ -1207,6 +1211,129 @@
     try { await navigator.share({ files: [new File([imgBlob], 'catnap.png', { type: 'image/png' })], text: SITE }); } catch { /* cancelled */ }
   });
 
+  // ---------- online leaderboard ----------
+  const playerId = (() => {
+    let id = store.get('player', null);
+    if (!id) {
+      try { id = crypto.randomUUID(); } catch { id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }); }
+      store.set('player', id);
+    }
+    return id;
+  })();
+  let myPid = null;
+  if (LB.enabled) LB.pidOf(playerId).then(p => { myPid = p; });
+  const lbBoardFor = m => !m ? null : m.kind === 'daily' ? 'daily-' + m.date : m.kind === 'level' ? 'level-' + m.level : null;
+  const marathonBoard = () => 'marathon-' + LB.isoWeek();
+  let afterName = null;
+  function askName(then) {
+    afterName = then;
+    $('nameInput').value = settings.playerName || '';
+    openDlg('dlgName');
+    setTimeout(() => $('nameInput').focus(), 50);
+  }
+  $('nameForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('nameInput').value.replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 20);
+    if (!v) return;
+    settings.playerName = v; saveSettings();
+    $('dlgName').close();
+    const f = afterName; afterName = null;
+    if (f) f();
+    if ($('dlgLB').open) renderLBFoot();
+  });
+  function setWinLB(text, btnText, onClick) {
+    const box = $('winLB');
+    box.hidden = !text && !btnText;
+    $('winLBText').textContent = text || '';
+    const b = $('winLBBtn');
+    b.hidden = !btnText;
+    b.textContent = btnText || '';
+    b.onclick = onClick || null;
+  }
+  function eligible() {
+    if (!LB.enabled || !meta) return { ok: false };
+    const board = lbBoardFor(meta);
+    if (!board) return { ok: false };
+    if (meta.kind === 'daily' && meta.date !== todayKey() && meta.date !== yesterdayKey()) return { ok: false, why: t('lbTooOld') };
+    if (hintsUsed > 0) return { ok: false, why: t('lbOnlyClean') };
+    if (elapsed < 3000) return { ok: false };
+    return { ok: true, board };
+  }
+  async function submitWin() {
+    const el = eligible();
+    if (!el.ok) { setWinLB(el.why || '', null); return; }
+    if (!settings.playerName) { setWinLB('', t('lbJoin'), () => askName(submitWin)); return; }
+    setWinLB(t('lbSending'), null);
+    const board = el.board;
+    try {
+      const r = await LB.submit({ board, player: playerId, name: settings.playerName, timeMs: Math.round(elapsed), regions: P.regions.join(''), solution: P.solution });
+      store.set('lbRank:' + board, r);
+      if (lbBoardFor(meta) === board) setWinLB('🏆 ' + t('lbRank', { r: r.rank, n: r.total }), t('lb'), () => openLB(meta.kind === 'level' ? 'level' : 'daily'));
+    } catch {
+      if (lbBoardFor(meta) === board) setWinLB(t('lbFail'), t('lb'), () => openLB(meta.kind === 'level' ? 'level' : 'daily'));
+    }
+  }
+  function showSavedRank() {
+    const board = lbBoardFor(meta);
+    const r = board && LB.enabled ? store.get('lbRank:' + board, null) : null;
+    if (r) setWinLB('🏆 ' + t('lbRank', { r: r.rank, n: r.total }), t('lb'), () => openLB(meta.kind === 'level' ? 'level' : 'daily'));
+    else setWinLB('', LB.enabled && board ? t('lb') : null, () => openLB(meta.kind === 'level' ? 'level' : 'daily'));
+  }
+  async function submitMarathon(score) {
+    if (!LB.enabled || score < 1) return null;
+    if (!settings.playerName) return 'needName';
+    try {
+      const r = await LB.submit({ board: marathonBoard(), player: playerId, name: settings.playerName, score });
+      store.set('lbRank:' + marathonBoard(), r);
+      return r;
+    } catch { return null; }
+  }
+  let lbTab = 'daily';
+  function lbTabs() {
+    const tabs = [['daily', t('lbToday')], ['marathon', t('lbWeek')]];
+    const lvl = meta?.kind === 'level' ? meta.level : store.get('level', 1);
+    tabs.push(['level', t('lbLevel', { k: lvl })]);
+    return { tabs, lvl };
+  }
+  function openLB(tab) {
+    if (!LB.enabled) return;
+    lbTab = tab || lbTab;
+    renderLB();
+    openDlg('dlgLB');
+  }
+  function renderLBFoot() {
+    $('lbMe').textContent = settings.playerName ? t('lbPlayingAs', { name: settings.playerName }) : '';
+    $('lbRename').textContent = settings.playerName ? t('lbChange') : t('lbJoin');
+  }
+  let lbReq = 0;
+  async function renderLB() {
+    const { tabs, lvl } = lbTabs();
+    $('lbTabs').innerHTML = tabs.map(([id, label]) => `<button type="button" role="tab" data-tab="${id}" aria-pressed="${lbTab === id}">${label}</button>`).join('');
+    renderLBFoot();
+    const board = lbTab === 'daily' ? 'daily-' + todayKey() : lbTab === 'marathon' ? marathonBoard() : 'level-' + lvl;
+    const kind = lbTab === 'marathon' ? 'score' : 'time';
+    const list = $('lbList');
+    list.innerHTML = `<li class="msg">${t('lbLoading')}</li>`;
+    const req = ++lbReq;
+    try {
+      const rows = await LB.top(board, kind, 50);
+      if (req !== lbReq) return;
+      if (!rows || !rows.length) { list.innerHTML = `<li class="msg">${t('lbEmpty')}</li>`; return; }
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      list.innerHTML = rows.map((r, k) => {
+        const me = myPid && r.pid === myPid;
+        return `<li class="${k < 3 ? 'top' + (k + 1) : ''}${me ? ' me' : ''}"><span class="rk">${k + 1}</span><span class="nm">${esc(r.name)}${me ? ` <small>(${t('lbYou')})</small>` : ''}</span><span class="vl">${kind === 'score' ? r.score : fmt(r.time_ms)}</span></li>`;
+      }).join('');
+      list.querySelector('.me')?.scrollIntoView({ block: 'nearest' });
+    } catch {
+      if (req === lbReq) list.innerHTML = `<li class="msg">${t('lbError')}</li>`;
+    }
+  }
+  $('lbTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { lbTab = b.dataset.tab; renderLB(); } });
+  $('lbRename').addEventListener('click', () => askName(null));
+  $('statsLB').hidden = !LB.enabled;
+  $('statsLB').addEventListener('click', () => { $('dlgStats').close(); openLB('daily'); });
+
   // ---------- marathon ----------
   const MAR = { time: 300000, bonus: 15000, hintCost: 20000, skipCost: 30000 };
   const MAR_SEQ = [[5, 0], [5, 0], [6, 0], [6, 1], [6, 1], [7, 0], [7, 1], [7, 1], [8, 1], [7, 2], [8, 1], [8, 2], [9, 1], [8, 2], [9, 2], [10, 1], [9, 2], [10, 2]];
@@ -1307,6 +1434,18 @@
       <p class="winExtra">${record && run.score > 0 ? t('marNew') : t('marBest', { k: pm.best })}</p>
       <div class="winBtns"><button type="button" id="marShareBtn">${t('share')}</button><button type="button" class="primary" id="marAgain">${t('marAgain')}</button></div><p id="marMsg" class="small" aria-live="polite"></p>`);
     $('marAgain').onclick = () => { M = null; openMarathon(); };
+    if (LB.enabled && run.score > 0) {
+      const line = document.createElement('div');
+      line.className = 'winLB';
+      $('marCard').insertBefore(line, $('marCard').querySelector('.winBtns'));
+      const show = r => {
+        if (r === 'needName') { line.innerHTML = `<button type="button" class="linkBtn">${t('lbJoin')}</button>`; line.firstChild.onclick = () => askName(() => submitMarathon(run.score).then(show)); }
+        else if (r && r.rank) { line.innerHTML = `<span>🏆 ${t('lbRank', { r: r.rank, n: r.total })}</span><button type="button" class="linkBtn">${t('lb')}</button>`; line.lastChild.onclick = () => openLB('marathon'); }
+        else { line.innerHTML = `<span>${t('lbFail')}</span>`; }
+      };
+      line.textContent = t('lbSending');
+      submitMarathon(run.score).then(show);
+    }
     $('marShareBtn').onclick = async () => {
       try { await navigator.clipboard.writeText(t('marShare', { k: run.solved, s: run.score }).replace(/\\n/g, '\n') + '\n' + SITE); $('marMsg').textContent = t('copied'); }
       catch { $('marMsg').textContent = t('copyFail'); }

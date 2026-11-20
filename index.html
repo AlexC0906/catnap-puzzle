@@ -132,6 +132,7 @@
           <p id="winText"></p>
           <p id="winExtra" class="winExtra"></p>
           <p id="winCountdown" class="small" hidden></p>
+          <div id="winLB" class="winLB" hidden><span id="winLBText"></span><button type="button" id="winLBBtn" class="linkBtn"></button></div>
           <div class="winBtns">
             <button id="share" type="button" data-i18n="share">Copy result</button>
             <button id="imgBtn" type="button" data-i18n="image">Image</button>
@@ -207,6 +208,7 @@
 <dialog id="dlgStats" class="dlg">
   <div class="dlgHead"><h2 data-i18n="stats">Statistics</h2><button type="button" class="dlgX" data-close aria-label="Close">×</button></div>
   <div id="statsBody"></div>
+  <button type="button" id="statsLB" class="primary wide" data-i18n="lb" hidden>Leaderboard</button>
 </dialog>
 
 <dialog id="dlgSettings" class="dlg">
@@ -246,11 +248,30 @@
   <p class="small" data-i18n="imgHint"></p>
 </dialog>
 
+<dialog id="dlgLB" class="dlg">
+  <div class="dlgHead"><h2 data-i18n="lb">Leaderboard</h2><button type="button" class="dlgX" data-close aria-label="Close">×</button></div>
+  <div id="lbTabs" class="seg lbTabs" role="tablist"></div>
+  <ol id="lbList" class="lbList"></ol>
+  <p class="small lbFoot"><span id="lbMe"></span> <button type="button" id="lbRename" class="linkBtn" data-i18n="lbChange">Change name</button></p>
+  <p class="small" data-i18n="lbOnlyClean"></p>
+</dialog>
+
+<dialog id="dlgName" class="dlg">
+  <div class="dlgHead"><h2 data-i18n="lbNameTitle">Your leaderboard name</h2><button type="button" class="dlgX" data-close aria-label="Close">×</button></div>
+  <form id="nameForm" class="nameForm">
+    <label for="nameInput" data-i18n="lbNameLabel">Name</label>
+    <input id="nameInput" type="text" maxlength="20" autocomplete="nickname" required>
+    <p class="small" data-i18n="lbNameHint"></p>
+    <button type="submit" class="primary wide" data-i18n="lbSave">Save</button>
+  </form>
+</dialog>
+
 <dialog id="dlgLevels" class="dlg wideDlg">
   <div class="dlgHead"><h2 data-i18n="levels">All levels</h2><button type="button" class="dlgX" data-close aria-label="Close">×</button></div>
   <div id="levelGrid" class="levelGrid"></div>
 </dialog>
 
+<script src="src/config.js"></script>
 <script src="src/i18n.js"></script>
 <script src="src/engine.js"></script>
 <script src="src/logic.js"></script>
@@ -258,6 +279,7 @@
 <script src="src/audio.js"></script>
 <script src="src/music.js"></script>
 <script src="src/achievements.js"></script>
+<script src="src/leaderboard.js"></script>
 <script src="src/game.js"></script>
 </body>
 </html>
