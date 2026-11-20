@@ -25,14 +25,17 @@ Every puzzle has exactly one solution and can be solved with pure logic. You nev
 | **Daily** | One puzzle per day, the same for everyone. Easy on Monday, Expert on Sunday. Keep your streak going 🔥 Missed a day? Play it from the archive calendar. |
 | **Journey** | 60 levels in 6 chapters, from *The Yarn Basket* (5×5 Easy) to *Moonlit Rooftops* (10×10 Expert). Earn up to 3 stars per level. The first levels teach you as you play. |
 | **Free play** | Endless puzzles. Pick any difficulty (Easy, Medium, Hard, Expert) and board size (5×5 to 10×10). |
+| **Marathon** | 5 minutes on the clock. Every solve gives points and +15 s, hints cost 20 s. Boards grow as you go. Beat your best score. |
 | **Workshop** | Paint your own puzzle. Live checks tell you if it has exactly one solution and how hard it is. Share it as a link. |
 
 ## Features
 
 - **Explained hints**: a hint doesn't just reveal a cell. It tells you *why*, e.g. “Every free spot in the yellow cushion is on row 3, so the rest of row 3 gets ×”, and highlights the cells involved.
 - **Coach mode**: explains every next step automatically, great for learning.
+- **Shareable image card**: after a win, get a PNG of your solved board with your cat, time and stars, ready for WhatsApp or Instagram.
+- **Calm lo-fi music**, generated live in the browser (optional), and a little chime when a cushion gets its cat.
 - **A mascot cat** peeks over the board: it follows your pointer, gets scared by conflicting cats, dozes off when you pause and celebrates when you win.
-- **20 achievements**, from *First nap* to *Night owl* and *Cheetah* (10×10 in under 5 minutes, no hints).
+- **22 achievements**, from *First nap* to *Night owl* and *Cheetah* (10×10 in under 5 minutes, no hints).
 - **8 cats to unlock** (Ginger, Tabby, Coal, Tuxedo, Calico, Siamese, Snow, Galaxy) with Journey stars and daily streaks.
 - Statistics: puzzles solved, streaks, best time for every size and difficulty.
 - Synthesized sound effects (Web Audio, no audio files), including a little meow.
@@ -84,6 +87,7 @@ src/game.js           game UI, modes, hints, workshop, mascot, progress
 src/achievements.js   Journey chapters and achievements
 src/i18n.js           English + Romanian strings
 src/audio.js          synthesized sound effects
+src/music.js          procedural background music
 src/worker.js         background puzzle generation
 scripts/build-levels.js   regenerates src/levels.js
 sw.js, manifest.webmanifest   offline support / install
