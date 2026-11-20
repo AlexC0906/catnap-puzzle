@@ -1,184 +1,267 @@
-// Mustăți — game UI
+// Catnap — game UI
 {
-  const E = window.MustatiEngine;
-  const L = window.MustatiI18n;
-  const t = L.t;
+  const E = window.CatnapEngine;
+  const LG = window.CatnapLogic;
+  const I = window.CatnapI18n;
+  const A = window.CatnapAudio;
+  const LEVELS = window.CatnapLevels;
+  const t = I.t;
   const $ = id => document.getElementById(id);
   const EMPTY = 0, MARK = 1, CAT = 2;
-  const SIZES = [5, 6, 7, 8, 9, 10];
-  const REGION_EMOJI = ['🟥', '🟨', '🟩', '🟦', '🟪', '🟧', '🟫', '⬜', '⬛', '🔶'];
+  const LETTERS = 'ABCDEFGHIJ';
+  const SITE = 'https://alexc0906.github.io/catnap-puzzle/';
+  // Daily schedule by weekday (0 = Sunday): [size, tier]
+  const DAILY = [[9, 3], [6, 0], [7, 1], [8, 1], [8, 2], [9, 2], [10, 2]];
+  const SKINS = [
+    { id: 'ginger', ok: () => true },
+    { id: 'tabby', ok: p => totalStars(p) >= 10 },
+    { id: 'black', ok: p => totalStars(p) >= 30 },
+    { id: 'tux', ok: p => p.daily.best >= 3 },
+    { id: 'calico', ok: p => totalStars(p) >= 60 },
+    { id: 'siamese', ok: p => totalStars(p) >= 100 },
+    { id: 'white', ok: p => totalStars(p) >= 150 },
+    { id: 'galaxy', ok: p => totalStars(p) >= 180 }
+  ];
 
+  // ---------- storage ----------
   const store = {
-    get(k, d) { try { const v = localStorage.getItem('mustati:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem('mustati:' + k, JSON.stringify(v)); } catch { /* storage off */ } }
+    get(k, d) { try { const v = localStorage.getItem('catnap:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('catnap:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+    clear() { try { Object.keys(localStorage).filter(k => k.startsWith('catnap:')).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } }
   };
+  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, skin: 'ginger' });
+  const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'] });
+  let settings = Object.assign(defaultSettings(), store.get('settings', {}));
+  let progress = Object.assign(defaultProgress(), store.get('progress', {}));
+  const saveSettings = () => store.set('settings', settings);
+  const saveProgress = () => store.set('progress', progress);
+  function totalStars(p = progress) { return Object.values(p.stars).reduce((a, b) => a + b, 0); }
 
-  let P = null;            // puzzle {n, regions, solution, seed}
-  let cells = [];          // state per cell
-  let history = [];        // undo stack of batches [{i, prev}]
-  let batch = null;
-  let startTime = 0, elapsed = 0, ticking = false, won = false, hintsUsed = 0;
-  let isDaily = false;
-  let size = store.get('size', 8);
-  let els = [];
+  // ---------- state ----------
+  let mode = store.get('mode', 'daily');
+  let free = Object.assign({ n: 8, tier: 1 }, store.get('free', {}));
+  let P = null, meta = null, geom = null;
+  let cells = [], history = [], batch = null, els = [];
+  let startTime = 0, elapsed = 0, ticking = false, won = false, paused = false, hintsUsed = 0;
+  let hint = null, lastStars = 0, lastRecord = false, loadToken = 0;
 
-  const settings = { autoX: store.get('autoX', false), showErr: store.get('showErr', true) };
-  $('autoX').checked = settings.autoX;
-  $('showErr').checked = settings.showErr;
+  // ---------- dates ----------
+  const pad = x => String(x).padStart(2, '0');
+  const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const todayKey = () => dateKey(new Date());
+  const yesterdayKey = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKey(d); };
+  const longDate = () => { try { return new Intl.DateTimeFormat(I.lang === 'ro' ? 'ro-RO' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch { return todayKey(); } };
 
-  // ---------- puzzle selection ----------
-  function todayKey() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // ---------- generation (worker when possible) ----------
+  let worker = null;
+  const pending = new Map();
+  try {
+    worker = new Worker('src/worker.js');
+    worker.onmessage = e => { const cb = pending.get(e.data.id); pending.delete(e.data.id); if (cb) cb(e.data.puzzle); };
+    worker.onerror = () => { worker = null; for (const [, cb] of pending) cb(null); pending.clear(); };
+  } catch { worker = null; }
+  const cache = new Map();
+  function generate(n, tier, seed) {
+    const key = `${n}-${tier}-${seed}`;
+    if (cache.has(key)) return Promise.resolve(cache.get(key));
+    return new Promise(resolve => {
+      const done = p => { if (p) cache.set(key, p); resolve(p); };
+      const local = () => setTimeout(() => done(LG.generateRated(E, n, tier, seed)), 30);
+      if (!worker) return local();
+      const id = Math.random().toString(36).slice(2);
+      pending.set(id, p => p ? done(p) : local());
+      worker.postMessage({ id, n, tier, seed });
+    });
   }
-  function loadPuzzle(n, seed, daily) {
-    const p = E.generate(n, seed);
-    if (!p) return loadPuzzle(n, (seed * 31 + 7) >>> 0, daily);
-    P = p; isDaily = daily; size = n;
-    cells = new Array(n * n).fill(EMPTY);
-    history = []; won = false; hintsUsed = 0;
-    elapsed = 0; ticking = false;
-    const key = daily ? 'daily-' + todayKey() : `p${n}-${seed}`;
-    const saved = store.get('save:' + key, null);
-    if (saved && saved.cells && saved.cells.length === n * n) {
+
+  // ---------- loading puzzles ----------
+  function showLoading(on) { $('loading').hidden = !on; }
+  async function loadDaily() {
+    const tok = ++loadToken;
+    const key = todayKey();
+    const [n, tier] = DAILY[new Date().getDay()];
+    const delay = setTimeout(() => showLoading(true), 120);
+    const p = await generate(n, tier, E.hashString('catnap-daily-' + key));
+    clearTimeout(delay); showLoading(false);
+    if (tok !== loadToken || !p) return;
+    start(p, { kind: 'daily', id: 'daily-' + key, tier: p.tier, date: key });
+  }
+  function loadLevel(k) {
+    ++loadToken;
+    k = Math.max(1, Math.min(LEVELS.length, k));
+    const L = LEVELS[k - 1];
+    const regions = [...L.r].map(Number);
+    const solution = E.solve(L.n, regions, 1)[0];
+    store.set('level', k);
+    start({ n: L.n, regions, solution, tier: L.tier }, { kind: 'level', id: 'level-' + k, tier: L.tier, level: k });
+  }
+  async function loadFree(n, tier, seed) {
+    const tok = ++loadToken;
+    if (!LG.TIER_SIZES[tier].includes(n)) n = LG.TIER_SIZES[tier].reduce((a, b) => Math.abs(b - n) < Math.abs(a - n) ? b : a);
+    free = { n, tier, seed: seed ?? ((Math.random() * 1e9) >>> 0) };
+    store.set('free', free);
+    renderModebar();
+    const delay = setTimeout(() => showLoading(true), 120);
+    const p = await generate(free.n, free.tier, free.seed);
+    clearTimeout(delay); showLoading(false);
+    if (tok !== loadToken || !p) return;
+    start(p, { kind: 'free', id: `f-${free.n}-${free.tier}-${free.seed}`, tier: p.tier });
+  }
+  function loadMode(m, opts = {}) {
+    mode = m; store.set('mode', m);
+    renderTabs();
+    if (m === 'daily') loadDaily();
+    else if (m === 'journey') loadLevel(opts.level ?? store.get('level', firstOpenLevel()));
+    else loadFree(opts.n ?? free.n, opts.tier ?? free.tier, opts.seed ?? (opts.fresh ? undefined : free.seed));
+    renderModebar();
+  }
+  function firstOpenLevel() {
+    for (let k = 1; k <= LEVELS.length; k++) if (!progress.stars[k]) return k;
+    return LEVELS.length;
+  }
+  const levelOpen = k => k === 1 || !!progress.stars[k - 1] || !!progress.stars[k];
+
+  function start(puzzle, m) {
+    P = puzzle; meta = m;
+    geom = LG.makeGeometry(P.n, P.regions);
+    const N = P.n * P.n;
+    const saved = store.get('save:' + m.id, null);
+    cells = new Array(N).fill(EMPTY); history = []; batch = null;
+    elapsed = 0; ticking = false; won = false; paused = false; hintsUsed = 0; hint = null;
+    if (saved && saved.cells && saved.cells.length === N) {
       cells = saved.cells; elapsed = saved.elapsed || 0; hintsUsed = saved.hints || 0; won = !!saved.won;
+      lastStars = saved.stars || 0;
     }
-    P.key = key;
-    try { window.history.replaceState(null, '', daily ? '#zilnic' : `#p${n}-${seed}`); } catch { /* sandboxed */ }
-    buildBoard();
-    renderModes();
-    renderName();
-    $('hintMsg').textContent = '';
-    $('win').hidden = true;
-    if (won) showWin(false);
+    try { window.history.replaceState(null, '', '#' + (m.kind === 'daily' ? 'daily' : m.id)); } catch { /* sandboxed */ }
+    buildBoard($('board'), P, true);
+    $('win').hidden = true; $('pauseOv').hidden = true;
+    clearHint();
+    renderName(); renderModebar();
     update();
-  }
-  function newRandom(n) { loadPuzzle(n, (Math.random() * 1e6) | 0, false); }
-  function loadDaily() { loadPuzzle(8, E.hashString('mustati-' + todayKey()), true); }
-
-  function renderModes() {
-    $('sizes').innerHTML = SIZES.map(s => `<button type="button" data-size="${s}" aria-pressed="${!isDaily && s === size}">${s}×${s}</button>`).join('');
-    $('daily').setAttribute('aria-pressed', String(isDaily));
+    if (won) showWin(false);
+    else if (coachActive()) showHint(computeHint(), false);
   }
 
   // ---------- board ----------
-  function buildBoard() {
-    const { n, regions } = P;
-    const board = $('board');
+  function buildBoard(board, p, interactive) {
+    const { n, regions } = p;
     board.style.gridTemplateColumns = `repeat(${n}, minmax(0,1fr))`;
     board.style.gridTemplateRows = `repeat(${n}, minmax(0,1fr))`;
-    board.classList.remove('won');
+    board.className = 'board';
     const thick = n >= 9 ? '2.5px' : '3px';
     let html = '';
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const i = r * n + c, g = regions[i];
       const diff = (rr, cc) => rr < 0 || cc < 0 || rr >= n || cc >= n ? false : regions[rr * n + cc] !== g;
-      const bt = diff(r - 1, c) ? thick : '0px', bb = diff(r + 1, c) ? thick : '0px';
-      const bl = diff(r, c - 1) ? thick : '0px', br = diff(r, c + 1) ? thick : '0px';
-      html += `<button class="cell" type="button" role="gridcell" data-i="${i}" aria-label="${t('cell', { r: r + 1, c: c + 1 })}" style="--rc:var(--r${g});--bt:${bt};--bb:${bb};--bl:${bl};--br:${br}"></button>`;
+      const b = (rr, cc) => diff(rr, cc) ? thick : '0px';
+      const tag = interactive ? 'button type="button" role="gridcell"' : 'div';
+      html += `<${tag} class="cell" data-i="${i}" data-l="${LETTERS[g]}" style="--rc:var(--r${g});--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}"></${interactive ? 'button' : 'div'}>`;
     }
     board.innerHTML = html;
-    els = [...board.children];
+    if (interactive) els = [...board.children];
+    return board;
   }
 
   function blockedSet() {
-    const { n, regions } = P;
-    const blocked = new Uint8Array(n * n);
-    for (let i = 0; i < n * n; i++) {
-      if (cells[i] !== CAT) continue;
-      const r = (i / n) | 0, c = i % n, g = regions[i];
-      for (let j = 0; j < n * n; j++) {
-        if (j === i) continue;
-        const rr = (j / n) | 0, cc = j % n;
-        if (rr === r || cc === c || regions[j] === g || (Math.abs(rr - r) <= 1 && Math.abs(cc - c) <= 1)) blocked[j] = 1;
-      }
-    }
+    const blocked = new Uint8Array(P.n * P.n);
+    cells.forEach((s, i) => { if (s === CAT) for (const j of geom.attacks[i]) blocked[j] = 1; });
     return blocked;
   }
-
   function conflicts() {
-    const { n, regions } = P;
-    const bad = new Set();
-    const cats = [];
-    cells.forEach((s, i) => { if (s === CAT) cats.push(i); });
-    for (let a = 0; a < cats.length; a++) for (let b = a + 1; b < cats.length; b++) {
-      const i = cats[a], j = cats[b];
-      const r1 = (i / n) | 0, c1 = i % n, r2 = (j / n) | 0, c2 = j % n;
-      if (r1 === r2 || c1 === c2 || regions[i] === regions[j] || (Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1)) { bad.add(i); bad.add(j); }
-    }
-    return { bad, count: cats.length };
+    const bad = new Set(); let count = 0;
+    cells.forEach((s, i) => {
+      if (s !== CAT) return;
+      count++;
+      for (const j of geom.attacks[i]) if (cells[j] === CAT) { bad.add(i); bad.add(j); }
+    });
+    return { bad, count };
   }
 
   function update() {
+    if (!P) return;
     const { n } = P;
     const { bad, count } = conflicts();
     const blocked = settings.autoX ? blockedSet() : null;
+    const hf = new Set(hint?.focus || []), ht = new Set(hint?.targets || []), hp = hint?.place;
     els.forEach((el, i) => {
       const s = cells[i];
       const want = s === CAT ? 'cat' : s === MARK ? 'x' : blocked && blocked[i] ? 'auto' : '';
       if (el.dataset.v !== want) {
         el.dataset.v = want;
-        el.innerHTML = want === 'cat' ? `<svg class="c"><use href="#cat"/></svg>`
-          : want === 'x' ? `<svg class="x"><use href="#ex"/></svg>`
-          : want === 'auto' ? `<svg class="x auto"><use href="#ex"/></svg>` : '';
+        el.innerHTML = want === 'cat' ? '<svg class="c"><use href="#cat"/></svg>'
+          : want === 'x' ? '<svg class="x"><use href="#ex"/></svg>'
+          : want === 'auto' ? '<svg class="x auto"><use href="#ex"/></svg>' : '';
       }
       el.classList.toggle('bad', settings.showErr && bad.has(i));
+      el.classList.toggle('hf', hf.has(i));
+      el.classList.toggle('ht', ht.has(i));
+      el.classList.toggle('hp', hp === i);
       el.setAttribute('aria-label', t('cell', { r: ((i / n) | 0) + 1, c: i % n + 1 }) + (s === CAT ? t('cellCat') : s === MARK ? t('cellMark') : ''));
     });
+    $('board').classList.toggle('hinting', !!hint && (hf.size > 0 || ht.size > 0 || hp != null));
     $('catCount').textContent = `${count}/${n}`;
     $('undo').disabled = !history.length || won;
+    $('hint').disabled = won;
+    $('pause').disabled = won;
     if (!won && count === n && bad.size === 0) finish();
     save();
   }
 
   function save() {
-    if (!P) return;
-    store.set('save:' + P.key, { cells, elapsed: currentElapsed(), hints: hintsUsed, won });
+    if (!meta) return;
+    store.set('save:' + meta.id, { cells, elapsed: currentElapsed(), hints: hintsUsed, won, stars: lastStars });
   }
 
   // ---------- input ----------
-  let drag = null; // {mode: MARK|EMPTY|null, seen:Set}
+  let drag = null;
+  const canPlay = () => P && !won && !paused && $('loading').hidden;
   function setCell(i, v) {
     if (cells[i] === v) return;
     batch.push({ i, prev: cells[i] });
     cells[i] = v;
   }
-  function startClock() {
-    if (!ticking && !won) { ticking = true; startTime = performance.now(); }
+  function startClock() { if (!ticking && !won && !paused) { ticking = true; startTime = performance.now(); } }
+  function commit() {
+    const changed = batch && batch.length;
+    if (changed) history.push(batch);
+    batch = null; drag = null;
+    if (changed && hint) { clearHint(); if (coachActive()) setTimeout(() => !won && showHint(computeHint(), false), 60); }
+    update();
   }
+  function soundFor(v, i) {
+    if (v === CAT) A.play(geom.attacks[i].some(j => cells[j] === CAT) ? 'error' : 'cat');
+    else if (v === MARK) A.play('mark');
+    else A.play('clear');
+  }
+
   const board = $('board');
   board.addEventListener('pointerdown', e => {
     const el = e.target.closest('.cell');
-    if (!el || won) return;
+    if (!el || !canPlay()) return;
     e.preventDefault();
     const i = +el.dataset.i;
-    batch = [];
-    startClock();
-    if (e.button === 2) { setCell(i, cells[i] === CAT ? EMPTY : CAT); drag = null; }
+    batch = []; startClock();
+    let next;
+    if (e.button === 2) { next = cells[i] === CAT ? EMPTY : CAT; drag = null; }
     else {
-      const next = cells[i] === EMPTY ? MARK : cells[i] === MARK ? CAT : EMPTY;
-      setCell(i, next);
+      next = cells[i] === EMPTY ? MARK : cells[i] === MARK ? CAT : EMPTY;
       drag = next === MARK ? { mode: MARK, seen: new Set([i]) } : next === EMPTY ? { mode: EMPTY, seen: new Set([i]) } : null;
     }
-    $('hintMsg').textContent = '';
+    setCell(i, next); soundFor(next, i);
     update();
   });
   board.addEventListener('pointermove', e => {
-    if (!drag || won) return;
+    if (!drag || !batch) return;
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.cell');
-    if (!el) return;
+    if (!el || !board.contains(el)) return;
     const i = +el.dataset.i;
     if (drag.seen.has(i)) return;
     drag.seen.add(i);
-    if (drag.mode === MARK && cells[i] === EMPTY) setCell(i, MARK);
+    if (drag.mode === MARK && cells[i] === EMPTY) { setCell(i, MARK); A.play('mark'); }
     else if (drag.mode === EMPTY && cells[i] === MARK) setCell(i, EMPTY);
     update();
   });
-  const endDrag = () => {
-    if (batch && batch.length) history.push(batch);
-    batch = null; drag = null;
-    if (P) update();
-  };
+  const endDrag = () => { if (batch) commit(); };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
   board.addEventListener('contextmenu', e => e.preventDefault());
@@ -190,173 +273,424 @@
     if (moves[e.key] != null) {
       const j = i + moves[e.key];
       if (j >= 0 && j < n * n && !(e.key === 'ArrowLeft' && i % n === 0) && !(e.key === 'ArrowRight' && i % n === n - 1)) els[j].focus();
-      e.preventDefault();
-    } else if (e.key === 'x' || e.key === 'X' || e.key === 'c' || e.key === 'C' || e.key === ' ' || e.key === 'Backspace') {
-      if (won) return;
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
+    } else if (/^[xXcC ]$/.test(e.key) || e.key === 'Backspace' || e.key === 'Delete') {
+      if (!canPlay()) return;
+      e.preventDefault(); e.stopPropagation();
       batch = []; startClock();
       const v = /x/i.test(e.key) ? (cells[i] === MARK ? EMPTY : MARK) : /c/i.test(e.key) ? (cells[i] === CAT ? EMPTY : CAT) : e.key === ' ' ? (cells[i] + 1) % 3 : EMPTY;
-      setCell(i, v);
-      endDrag();
+      setCell(i, v); soundFor(v, i);
+      commit();
     }
   });
-  // Enter on a focused cell triggers click → handled as pointerdown for mouse; keyboard uses keys above.
-  board.addEventListener('click', e => { if (e.detail === 0) { const el = e.target.closest('.cell'); if (el && !won) { batch = []; startClock(); const i = +el.dataset.i; setCell(i, (cells[i] + 1) % 3); endDrag(); } } });
+  board.addEventListener('click', e => {
+    if (e.detail !== 0) return; // keyboard "Enter" only
+    const el = e.target.closest('.cell');
+    if (!el || !canPlay()) return;
+    const i = +el.dataset.i;
+    batch = []; startClock();
+    const v = (cells[i] + 1) % 3;
+    setCell(i, v); soundFor(v, i);
+    commit();
+  });
 
   function undo() {
-    if (won || !history.length) return;
+    if (won || paused || !history.length) return;
     const b = history.pop();
     for (let k = b.length - 1; k >= 0; k--) cells[b[k].i] = b[k].prev;
+    A.play('clear');
+    clearHint();
     update();
   }
-  $('undo').addEventListener('click', undo);
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
-  });
-  $('reset').addEventListener('click', () => {
-    if (won) { won = false; $('win').hidden = true; elapsed = 0; ticking = false; $('board').classList.remove('won'); }
+  function restart() {
+    if (!P) return;
+    if (won) {
+      won = false; lastStars = 0; elapsed = 0; ticking = false; hintsUsed = 0;
+      $('win').hidden = true; $('board').classList.remove('won');
+    }
+    if (paused) togglePause(false);
     batch = [];
     cells.forEach((v, i) => { if (v !== EMPTY) setCell(i, EMPTY); });
-    endDrag();
-  });
-  $('hint').addEventListener('click', () => {
-    if (won) return;
-    const { n, solution } = P;
-    // 1) a cat in a wrong place
-    for (let i = 0; i < n * n; i++) {
-      if (cells[i] === CAT && solution[(i / n) | 0] !== i % n) {
-        flash(i); hintsUsed++;
-        $('hintMsg').textContent = t('hintWrongCat');
-        return update();
-      }
-    }
-    // 2) an X on a cell that should be a cat
-    for (let r = 0; r < n; r++) {
-      const i = r * n + solution[r];
-      if (cells[i] === MARK) {
-        flash(i); hintsUsed++;
-        $('hintMsg').textContent = t('hintWrongMark');
-        return update();
-      }
-    }
-    // 3) place one missing cat — prefer the smallest region still empty
-    const sizes = new Array(n).fill(0);
-    P.regions.forEach(g => sizes[g]++);
-    const rows = [...Array(n).keys()].filter(r => cells[r * n + solution[r]] !== CAT)
-      .sort((a, b) => sizes[P.regions[a * n + solution[a]]] - sizes[P.regions[b * n + solution[b]]]);
-    if (!rows.length) return;
-    const i = rows[0] * n + solution[rows[0]];
-    batch = []; startClock(); setCell(i, CAT); hintsUsed++;
-    $('hintMsg').textContent = t('hintPlaced');
-    endDrag(); flash(i);
-  });
-  function flash(i) {
-    const el = els[i];
-    el.classList.remove('hintCell'); void el.offsetWidth; el.classList.add('hintCell');
+    clearHint();
+    commit();
+    if (coachActive()) showHint(computeHint(), false);
   }
+  $('undo').addEventListener('click', undo);
+  $('reset').addEventListener('click', restart);
 
-  $('autoX').addEventListener('change', e => { settings.autoX = e.target.checked; store.set('autoX', settings.autoX); update(); });
-  $('showErr').addEventListener('change', e => { settings.showErr = e.target.checked; store.set('showErr', settings.showErr); update(); });
-  $('sizes').addEventListener('click', e => {
-    const b = e.target.closest('button[data-size]');
-    if (!b) return;
-    store.set('size', +b.dataset.size);
-    newRandom(+b.dataset.size);
-  });
-  $('daily').addEventListener('click', loadDaily);
-  $('newGame').addEventListener('click', () => newRandom(isDaily ? store.get('size', 8) : size));
-  $('winNext').addEventListener('click', () => newRandom(isDaily ? store.get('size', 8) : size));
+  // ---------- pause ----------
+  function togglePause(on = !paused) {
+    if (!P || won) return;
+    if (on && !paused) { elapsed = currentElapsed(); ticking = false; paused = true; }
+    else if (!on && paused) { paused = false; if (elapsed > 0) startClock(); }
+    $('pauseOv').hidden = !paused;
+    $('pause').textContent = t(paused ? 'resume' : 'pause');
+    save();
+  }
+  $('pause').addEventListener('click', () => togglePause());
+  $('resumeBtn').addEventListener('click', () => togglePause(false));
+  document.addEventListener('visibilitychange', () => { if (document.hidden && ticking && !won) togglePause(true); });
 
-  // ---------- timer & win ----------
+  // ---------- hints ----------
+  const coachActive = () => P && !won && meta && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
+  const colorName = g => t('colors')[g];
+  function unitName(u, cap) {
+    if (u.kind === 'region') return t(cap ? 'Region' : 'region', { color: colorName(u.index) });
+    return t((cap ? (u.kind === 'row' ? 'Row' : 'Col') : u.kind), { k: u.index + 1 });
+  }
+  function describe(step) {
+    switch (step.tech) {
+      case 'single': return t('hSingle', { Unit: unitName(step.unit, true) });
+      case 'confine':
+        if (step.unit.kind === 'region') return t('hConfineRegion', { unit: unitName(step.unit), line: unitName(step.target) });
+        return t('hConfineLine', { unit: unitName(step.unit), region: unitName({ kind: 'region', index: step.target.index }) });
+      case 'blocker': return t('hBlocker', { unit: unitName(step.unit) });
+      case 'subset': {
+        const k = step.units.length;
+        if (step.direction === 'regionsInLines') {
+          return t('hSubsetR', {
+            Units: t('Regions', { list: I.list(step.units.map(u => colorName(u.index))) }),
+            lines: t(step.lines.kind === 'row' ? 'rows' : 'cols', { list: I.list(step.lines.indices.map(x => x + 1)) }), k
+          });
+        }
+        return t('hSubsetL', {
+          Units: t(step.axis === 'row' ? 'Rows' : 'Cols', { list: I.list(step.units.map(u => u.index + 1)) }),
+          lines: t('regions', { list: I.list(step.lines.indices.map(colorName)) }), k
+        });
+      }
+      default: return t('hContra');
+    }
+  }
+  function computeHint() {
+    if (!P || won) return null;
+    const { n, solution } = P;
+    for (let i = 0; i < n * n; i++) if (cells[i] === CAT && solution[(i / n) | 0] !== i % n) return { kind: 'wrongCat', text: t('hintWrongCat'), targets: [i], fix: [[i, EMPTY]] };
+    for (let r = 0; r < n; r++) { const i = r * n + solution[r]; if (cells[i] === MARK) return { kind: 'wrongMark', text: t('hintWrongMark'), targets: [i], fix: [[i, EMPTY]] }; }
+    const s = LG.newState(geom);
+    cells.forEach((v, i) => { if (v === MARK) s.cand[i] = 0; });
+    cells.forEach((v, i) => { if (v === CAT) LG.placeCat(geom, s, i); });
+    const step = LG.nextStep(geom, s);
+    if (!step) return { kind: 'done', text: t('hintDone'), targets: [], fix: [] };
+    // If the step relies on cells that are blocked by a cat but not yet marked,
+    // explain those first: otherwise "only one free spot" looks wrong.
+    const blocked = blockedSet();
+    const hidden = [...new Set([...(step.focus || []), ...(step.unit ? step.unit.cells : [])])].filter(i => cells[i] === EMPTY && blocked[i] && i !== step.place);
+    if (hidden.length && !settings.autoX) {
+      const cats = cells.map((v, i) => v === CAT && hidden.some(j => geom.attacks[i].includes(j)) ? i : -1).filter(i => i >= 0);
+      return { kind: 'step', text: t('hBlocked'), focus: cats, targets: hidden, fix: hidden.map(i => [i, MARK]) };
+    }
+    const fix = step.place != null ? [[step.place, CAT]] : step.eliminate.filter(i => cells[i] === EMPTY).map(i => [i, MARK]);
+    let focus = step.focus || [];
+    if (step.tech === 'confine' && step.target) {
+      const tgt = step.target;
+      const line = tgt.kind === 'row' ? geom.rows[tgt.index] : tgt.kind === 'col' ? geom.cols[tgt.index] : geom.regs[tgt.index];
+      focus = [...new Set([...focus, ...line])];
+    }
+    if (step.tech === 'subset') focus = [...new Set([...focus, ...step.eliminate])];
+    return { kind: 'step', step, text: describe(step), focus, targets: step.place != null ? [] : step.eliminate, place: step.place, fix };
+  }
+  function showHint(h, counts = true) {
+    if (!h) return;
+    hint = h;
+    if (counts) { hintsUsed++; A.play('hint'); }
+    $('hintText').textContent = h.text;
+    $('hintBox').hidden = false;
+    $('hintApply').hidden = !h.fix.length;
+    if (h.kind === 'wrongCat' || h.kind === 'wrongMark') h.targets.forEach(i => { const el = els[i]; el.classList.remove('blink'); void el.offsetWidth; el.classList.add('blink'); });
+    update();
+  }
+  function clearHint() {
+    hint = null;
+    $('hintBox').hidden = true;
+    if (P) $('board').classList.remove('hinting');
+  }
+  function applyHint() {
+    if (!hint || !canPlay()) return;
+    const fix = hint.fix;
+    batch = []; startClock();
+    fix.forEach(([i, v]) => setCell(i, v));
+    if (fix.some(([, v]) => v === CAT)) A.play('cat'); else A.play('mark');
+    hint = null; $('hintBox').hidden = true;
+    commit();
+    if (coachActive()) setTimeout(() => !won && showHint(computeHint(), false), 120);
+  }
+  $('hint').addEventListener('click', () => { if (canPlay()) showHint(computeHint(), !coachActive()); });
+  $('hintApply').addEventListener('click', applyHint);
+  $('hintClose').addEventListener('click', () => { clearHint(); update(); });
+
+  // ---------- timer ----------
   function currentElapsed() { return elapsed + (ticking ? performance.now() - startTime : 0); }
   function fmt(ms) {
-    const s = Math.floor(ms / 1000);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return (h ? h + ':' + pad(m) : m) + ':' + pad(sec);
   }
   setInterval(() => { if (P) $('timer').textContent = fmt(currentElapsed()); }, 250);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && ticking) { elapsed = currentElapsed(); ticking = false; save(); }
-  });
 
+  // ---------- win ----------
   function finish() {
     elapsed = currentElapsed(); ticking = false; won = true;
-    const recs = store.get('records', {});
-    const r = recs[P.n] || { best: null, solved: 0 };
-    r.solved++;
-    const isRecord = hintsUsed === 0 && (r.best == null || elapsed < r.best);
-    if (isRecord) r.best = elapsed;
-    recs[P.n] = r; store.set('records', recs);
-    if (isDaily) store.set('daily-done-' + todayKey(), true);
-    save();
-    showWin(isRecord);
-    renderRecords();
+    clearHint();
+    const stars = hintsUsed === 0 ? 3 : hintsUsed <= 2 ? 2 : 1;
+    lastStars = stars;
+    const before = new Set(SKINS.filter(s => s.ok(progress)).map(s => s.id));
+    progress.solved++;
+    progress.byTier[meta.tier] = (progress.byTier[meta.tier] || 0) + 1;
+    const bk = `${P.n}-${meta.tier}`;
+    lastRecord = hintsUsed === 0 && (progress.best[bk] == null || elapsed < progress.best[bk]);
+    if (lastRecord) progress.best[bk] = Math.round(elapsed);
+    if (meta.kind === 'level') progress.stars[meta.level] = Math.max(progress.stars[meta.level] || 0, stars);
+    if (meta.kind === 'daily' && !progress.daily.done[meta.date]) {
+      const d = progress.daily;
+      d.done[meta.date] = true;
+      d.streak = d.last === yesterdayKey() ? d.streak + 1 : d.last === meta.date ? d.streak : 1;
+      d.last = meta.date;
+      d.best = Math.max(d.best, d.streak);
+    }
+    const fresh = SKINS.filter(s => s.ok(progress) && !before.has(s.id));
+    saveProgress(); save();
+    showWin(true);
+    if (fresh.length) setTimeout(() => { A.play('unlock'); toast(t('unlocked', { name: t('skins')[fresh[0].id] })); }, 1400);
   }
-  function showWin(isRecord) {
+  function showWin(celebrate) {
     $('board').classList.add('won');
     els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
-    const time = fmt(elapsed);
-    lastRecord = isRecord;
     renderWinText();
     $('shareMsg').textContent = '';
-    $('timer').textContent = time;
-    setTimeout(() => { if (won) $('win').hidden = false; }, 900);
+    $('timer').textContent = fmt(elapsed);
+    const next = $('winNext');
+    if (meta.kind === 'level') { next.hidden = meta.level >= LEVELS.length; next.textContent = t('nextLevel'); }
+    else if (meta.kind === 'daily') { next.hidden = false; next.textContent = t('playFree'); }
+    else { next.hidden = false; next.textContent = t('next'); }
+    if (celebrate) { A.play('win'); confetti(); }
+    setTimeout(() => { if (won) $('win').hidden = false; }, celebrate ? 900 : 0);
+    renderModebar();
   }
+  function renderWinText() {
+    if (!P || !meta) return;
+    const k = hintsUsed;
+    $('winText').textContent = t('winIn', { size: `${P.n}×${P.n}`, tier: t('tier' + meta.tier), t: fmt(elapsed) }) + '. ' + (k === 0 ? t('winNoHints') : k === 1 ? t('winHints1') : t('winHintsN', { k }));
+    const extra = [];
+    if (lastRecord) extra.push(t('winRecord'));
+    if (meta.kind === 'daily') { const s = progress.daily.streak; extra.push(t('streakLine', { k: s, k1: s === 1 ? t('day1') : t('dayN') })); }
+    $('winExtra').textContent = extra.join(' · ');
+    $('winStars').innerHTML = meta.kind === 'level' ? [1, 2, 3].map(s => `<svg class="${s <= lastStars ? 'on' : ''}"><use href="#i-star"/></svg>`).join('') : '';
+  }
+  $('winNext').addEventListener('click', () => {
+    if (meta.kind === 'level') loadMode('journey', { level: meta.level + 1 });
+    else loadMode('free', { fresh: true });
+  });
   $('share').addEventListener('click', async () => {
-    const { n, regions, solution } = P;
-    let grid = '';
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) grid += solution[r] === c ? '🐱' : REGION_EMOJI[regions[r * n + c] % REGION_EMOJI.length];
-      grid += '\n';
-    }
-    const title = isDaily ? t('shareDaily', { date: todayKey() }) : t('shareOne', { n, seed: P.seed });
-    const text = `${title}\n⏱ ${fmt(elapsed)}${hintsUsed ? ` · 💡${hintsUsed}` : ''}\n${grid}`;
+    const title = meta.kind === 'daily' ? t('shareDaily', { date: meta.date }) : meta.kind === 'level' ? t('shareLevel', { k: meta.level }) : t('shareFree', { id: `${P.n}-${meta.tier}-${free.seed}` });
+    const stars = meta.kind === 'level' ? '⭐'.repeat(lastStars) + ' · ' : '';
+    const streak = meta.kind === 'daily' ? ` · 🔥${progress.daily.streak}` : '';
+    const link = SITE + '#' + (meta.kind === 'daily' ? 'daily' : meta.id);
+    const text = `${title}\n${stars}${P.n}×${P.n} ${t('tier' + meta.tier)} · ⏱ ${fmt(elapsed)} · 💡${hintsUsed}${streak}\n${'🐱'.repeat(P.n)}\n${link}`;
     try { await navigator.clipboard.writeText(text); $('shareMsg').textContent = t('copied'); }
     catch { $('shareMsg').textContent = t('copyFail'); }
   });
+  function confetti() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const box = document.createElement('div');
+    box.className = 'confetti';
+    let html = '';
+    for (let k = 0; k < 46; k++) {
+      html += `<i style="left:${Math.random() * 100}%;--c:var(--r${k % 10});--d:${1.6 + Math.random() * 1.6}s;--r:${Math.random() * 360}deg;animation-delay:${Math.random() * 0.5}s"></i>`;
+    }
+    box.innerHTML = html;
+    $('frame').appendChild(box);
+    setTimeout(() => box.remove(), 4000);
+  }
+  function toast(msg) {
+    const el = document.createElement('div');
+    el.className = 'toast'; el.setAttribute('role', 'status'); el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3300);
+  }
 
-  function renderRecords() {
-    const recs = store.get('records', {});
-    $('recTable').tBodies[0].innerHTML = SIZES.map(s => {
-      const r = recs[s];
-      return `<tr><td>${s}×${s}</td><td>${r && r.best != null ? fmt(r.best) : '—'}</td><td>${r ? r.solved : 0}</td></tr>`;
+  // ---------- header / mode bar ----------
+  function renderTabs() {
+    document.querySelectorAll('.tabs [data-mode]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
+  }
+  function renderName() {
+    if (!meta) return;
+    $('puzzleName').textContent = meta.kind === 'daily' ? t('dailyName', { date: meta.date }) : meta.kind === 'level' ? t('levelName', { k: meta.level, total: LEVELS.length }) : t('freeName', { id: `${P.n}-${meta.tier}-${free.seed}` });
+    const b = $('tierBadge');
+    b.className = 'badge t' + meta.tier;
+    b.textContent = `${t('tier' + meta.tier)} · ${P.n}×${P.n}`;
+  }
+  const starIcons = k => [1, 2, 3].map(s => `<svg class="${s <= k ? 'on' : ''}"><use href="#i-star"/></svg>`).join('');
+  function renderModebar() {
+    const mb = $('modebar');
+    if (mode === 'daily') {
+      const [n, tier] = DAILY[new Date().getDay()];
+      const d = progress.daily;
+      const streak = d.last === todayKey() || d.last === yesterdayKey() ? d.streak : 0;
+      mb.innerHTML = `<div class="dayInfo"><span>${longDate()}</span><span class="badge t${tier}">${t('tier' + tier)} · ${n}×${n}</span>${streak ? `<span class="streak" title="${t('statsStreak')}"><svg><use href="#i-flame"/></svg>${streak}</span>` : ''}${d.done[todayKey()] ? '<span class="streak">✓</span>' : ''}</div>`;
+    } else if (mode === 'journey') {
+      const k = meta?.kind === 'level' ? meta.level : store.get('level', 1);
+      const st = progress.stars[k] || 0;
+      mb.innerHTML = `<button class="navBtn" id="lvPrev" type="button" aria-label="Previous"${k <= 1 ? ' disabled' : ''}><svg><use href="#i-left"/></svg></button>
+        <button class="pill lvlBtn" id="lvOpen" type="button">${t('levelName', { k, total: LEVELS.length })} <span class="lvlStars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></button>
+        <button class="navBtn" id="lvNext" type="button" aria-label="Next"${k >= LEVELS.length || !levelOpen(k + 1) ? ' disabled' : ''}><svg><use href="#i-right"/></svg></button>`;
+      $('lvPrev').onclick = () => loadLevel(k - 1);
+      $('lvNext').onclick = () => loadLevel(k + 1);
+      $('lvOpen').onclick = openLevels;
+    } else {
+      const sizes = [5, 6, 7, 8, 9, 10];
+      mb.innerHTML = `<div class="seg" role="group" aria-label="${t('tierLabel')}">${[0, 1, 2, 3].map(x => `<button type="button" data-tier="${x}" aria-pressed="${free.tier === x}">${t('tier' + x)}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="${t('sizesLabel')}">${sizes.map(s => `<button type="button" data-n="${s}" aria-pressed="${free.n === s}"${LG.TIER_SIZES[free.tier].includes(s) ? '' : ' disabled'}>${s}</button>`).join('')}</div>
+        <span class="grow"></span><button class="pill primary" id="freeNew" type="button">${t('newGame')}</button>`;
+      mb.querySelectorAll('[data-tier]').forEach(b => b.onclick = () => loadFree(free.n, +b.dataset.tier));
+      mb.querySelectorAll('[data-n]').forEach(b => b.onclick = () => loadFree(+b.dataset.n, free.tier));
+      $('freeNew').onclick = () => loadFree(free.n, free.tier);
+    }
+  }
+  document.querySelectorAll('.tabs [data-mode]').forEach(b => b.addEventListener('click', () => { if (b.dataset.mode !== mode) loadMode(b.dataset.mode); }));
+
+  // ---------- dialogs ----------
+  function openDlg(id) {
+    const d = $(id);
+    if (paused === false && ticking) togglePause(true);
+    try { d.showModal(); } catch { d.setAttribute('open', ''); }
+  }
+  document.querySelectorAll('dialog').forEach(d => {
+    d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+    d.addEventListener('close', () => { if (d.id === 'dlgHelp') store.set('seenHelp', true); });
+  });
+
+  function openLevels() {
+    const cur = meta?.kind === 'level' ? meta.level : 0;
+    $('levelGrid').innerHTML = LEVELS.map((L, i) => {
+      const k = i + 1, open = levelOpen(k), st = progress.stars[k] || 0;
+      const tierColor = ['r2', 'r1', 'r0', 'r4'][L.tier];
+      return `<button type="button" class="lvl${k === cur ? ' cur' : ''}" data-k="${k}" style="--rc:var(--${tierColor})"${open ? '' : ' disabled'} aria-label="${t('levelName', { k, total: LEVELS.length })}, ${t('tier' + L.tier)}">
+        ${open ? `${k}<small>${L.n}×${L.n}</small><span class="st">${starIcons(st)}</span>` : '<svg class="lkb"><use href="#i-lock"/></svg>'}</button>`;
     }).join('');
+    $('levelGrid').onclick = e => {
+      const b = e.target.closest('[data-k]');
+      if (!b || b.disabled) return;
+      $('dlgLevels').close();
+      loadMode('journey', { level: +b.dataset.k });
+    };
+    openDlg('dlgLevels');
+    $('levelGrid').querySelector('.cur')?.scrollIntoView({ block: 'center' });
+  }
+
+  function openHelp() {
+    const L = LEVELS[0], regions = [...L.r].map(Number), sol = E.solve(L.n, regions, 1)[0];
+    const host = $('helpBoard');
+    host.innerHTML = '<div class="board"></div>';
+    const b = buildBoard(host.firstChild, { n: L.n, regions }, false);
+    [...b.children].forEach((el, i) => { if (sol[(i / L.n) | 0] === i % L.n) el.innerHTML = '<svg class="c"><use href="#cat"/></svg>'; });
+    openDlg('dlgHelp');
+  }
+  $('btnHelp').addEventListener('click', openHelp);
+
+  function openStats() {
+    const d = progress.daily;
+    const streak = d.last === todayKey() || d.last === yesterdayKey() ? d.streak : 0;
+    const sizes = [5, 6, 7, 8, 9, 10];
+    const anyBest = Object.keys(progress.best).length > 0;
+    $('statsBody').innerHTML = `<div class="statGrid">
+        <div><b>${progress.solved}</b><span>${t('statsSolved')}</span></div>
+        <div><b>${streak}</b><span>${t('statsStreak')}</span></div>
+        <div><b>${d.best}</b><span>${t('statsBestStreak')}</span></div>
+        <div><b>${totalStars()}<small>/${LEVELS.length * 3}</small></b><span>${t('statsStars')}</span></div>
+      </div>
+      <h3>${t('statsBest')}</h3>
+      ${anyBest ? `<div class="scroll"><table><thead><tr><th>${t('recBoard')}</th>${[0, 1, 2, 3].map(x => `<th>${t('tier' + x)}</th>`).join('')}</tr></thead><tbody>
+        ${sizes.map(n => `<tr><td>${n}×${n}</td>${[0, 1, 2, 3].map(x => { const v = progress.best[`${n}-${x}`]; return `<td>${v != null ? fmt(v) : (LG.TIER_SIZES[x].includes(n) ? '—' : '')}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div>` : `<p class="small">${t('statsNone')}</p>`}`;
+    openDlg('dlgStats');
+  }
+  $('btnStats').addEventListener('click', openStats);
+
+  function renderSettings() {
+    $('optSound').checked = settings.sound;
+    $('optAutoX').checked = settings.autoX;
+    $('optErr').checked = settings.showErr;
+    $('optCb').checked = settings.cb;
+    $('optCoach').checked = settings.coach;
+    document.querySelectorAll('#langSeg [data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === I.lang)));
+    $('skins').innerHTML = SKINS.map(s => {
+      const ok = s.ok(progress);
+      return `<button type="button" class="skin skin-${s.id}" data-skin="${s.id}" aria-pressed="${settings.skin === s.id}"${ok ? '' : ' disabled'}>
+        <svg class="face" aria-hidden="true"><use href="#cat"/></svg>${t('skins')[s.id]}<small>${ok ? '' : t('skinReq')[s.id]}</small>${ok ? '' : '<svg class="lk"><use href="#i-lock"/></svg>'}</button>`;
+    }).join('');
+  }
+  $('btnSettings').addEventListener('click', () => { renderSettings(); $('resetMsg').textContent = ''; resetArmed = false; $('resetAll').textContent = t('resetProgress'); openDlg('dlgSettings'); });
+  const bindOpt = (id, key, after) => $(id).addEventListener('change', e => { settings[key] = e.target.checked; saveSettings(); after && after(); });
+  bindOpt('optSound', 'sound', () => { A.enabled = settings.sound; if (settings.sound) A.play('meow'); });
+  bindOpt('optAutoX', 'autoX', update);
+  bindOpt('optErr', 'showErr', update);
+  bindOpt('optCb', 'cb', applyLook);
+  bindOpt('optCoach', 'coach', () => { if (coachActive() && !hint) showHint(computeHint(), false); else if (!coachActive()) { clearHint(); update(); } });
+  $('langSeg').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) { setLang(b.dataset.lang); renderSettings(); } });
+  $('skins').addEventListener('click', e => {
+    const b = e.target.closest('[data-skin]');
+    if (!b || b.disabled) return;
+    settings.skin = b.dataset.skin; saveSettings(); applyLook(); renderSettings(); A.play('meow', 1 + Math.random() * 0.2);
+  });
+  let resetArmed = false;
+  $('resetAll').addEventListener('click', () => {
+    if (!resetArmed) { resetArmed = true; $('resetAll').textContent = t('resetConfirm'); return; }
+    store.clear();
+    settings = Object.assign(defaultSettings(), { sound: settings.sound });
+    progress = defaultProgress();
+    saveSettings(); saveProgress();
+    resetArmed = false; $('resetAll').textContent = t('resetProgress');
+    $('resetMsg').textContent = t('resetDone');
+    applyLook(); renderSettings();
+    loadMode(mode);
+  });
+
+  function applyLook() {
+    const skin = SKINS.find(s => s.id === settings.skin && s.ok(progress)) ? settings.skin : 'ginger';
+    document.body.className = 'skin-' + skin + (settings.cb ? ' cb' : '');
+    A.enabled = settings.sound;
   }
 
   // ---------- language ----------
-  let lastRecord = false;
-  function renderName() {
-    if (!P) return;
-    $('puzzleName').textContent = isDaily ? t('dailyName', { date: todayKey(), n: P.n }) : t('puzzleName', { n: P.n, seed: P.seed });
-  }
-  function renderWinText() {
-    if (!P) return;
-    const k = hintsUsed;
-    $('winText').textContent = t('winIn', { n: P.n, t: fmt(elapsed) }) + (k === 0 ? t('winNoHints') : k === 1 ? t('winHints1') : t('winHintsN', { k })) + (lastRecord ? t('winRecord') : '');
-  }
   function setLang(v) {
-    L.lang = v;
+    I.lang = v;
     store.set('lang', v);
-    L.apply(document);
+    I.apply(document);
     $('lang').textContent = t('langSwitch');
     $('lang').setAttribute('aria-label', t('langSwitchLabel'));
-    renderName();
-    if (won) renderWinText();
-    $('hintMsg').textContent = '';
-    $('shareMsg').textContent = '';
-    if (P) { els.forEach(el => { el.dataset.v = '_'; }); update(); }
+    $('pause').textContent = t(paused ? 'resume' : 'pause');
+    renderName(); renderModebar();
+    if (won) { renderWinText(); showWinButtons(); }
+    if (hint) { const h = computeHint(); if (h) { hint = h; $('hintText').textContent = h.text; } }
+    if (P) update();
   }
-  $('lang').addEventListener('click', () => setLang(L.lang === 'ro' ? 'en' : 'ro'));
-  setLang(L.detect(store.get('lang', null)));
+  function showWinButtons() {
+    const next = $('winNext');
+    next.textContent = meta.kind === 'level' ? t('nextLevel') : meta.kind === 'daily' ? t('playFree') : t('next');
+  }
+  $('lang').addEventListener('click', () => setLang(I.lang === 'ro' ? 'en' : 'ro'));
+
+  // ---------- keyboard shortcuts ----------
+  document.addEventListener('keydown', e => {
+    if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && (e.ctrlKey || e.metaKey || !e.altKey)) { e.preventDefault(); undo(); }
+    else if (k === 'h' && !e.ctrlKey && !e.metaKey) { if (canPlay()) showHint(computeHint(), !coachActive()); }
+    else if (k === 'p' && !e.ctrlKey && !e.metaKey) togglePause();
+    else if (k === 'escape' && hint) { clearHint(); update(); }
+  });
 
   // ---------- boot ----------
-  renderRecords();
-  const m = /^#p(\d+)-(\d+)$/.exec(location.hash);
-  if (m && SIZES.includes(+m[1])) loadPuzzle(+m[1], +m[2], false);
-  else if (location.hash === '#zilnic' || !store.get('daily-done-' + todayKey(), false)) loadDaily();
-  else newRandom(SIZES.includes(size) ? size : 8);
-  window.addEventListener('hashchange', () => {
-    const k = /^#p(\d+)-(\d+)$/.exec(location.hash);
-    if (k && SIZES.includes(+k[1]) && P && P.key !== `p${k[1]}-${k[2]}`) loadPuzzle(+k[1], +k[2], false);
-  });
+  applyLook();
+  setLang(I.detect(store.get('lang', null)));
+  const h = location.hash.slice(1);
+  let m;
+  if (h === 'daily') loadMode('daily');
+  else if ((m = /^level-(\d+)$/.exec(h)) && levelOpen(+m[1])) loadMode('journey', { level: +m[1] });
+  else if ((m = /^f-(\d+)-(\d)-(\d+)$/.exec(h))) loadMode('free', { n: +m[1], tier: +m[2], seed: +m[3] });
+  else loadMode(mode);
+  if (!store.get('seenHelp', false)) setTimeout(openHelp, 400);
+
+  if ('serviceWorker' in navigator && /^https:$/.test(location.protocol) && /github\.io$/.test(location.hostname)) {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
+  }
 }
