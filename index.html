@@ -130,6 +130,7 @@
           <p id="winCountdown" class="small" hidden></p>
           <div class="winBtns">
             <button id="share" type="button" data-i18n="share">Copy result</button>
+            <button id="imgBtn" type="button" data-i18n="image">Image</button>
             <button id="winNext" type="button" class="primary">Next</button>
           </div>
           <p id="shareMsg" class="small" aria-live="polite"></p>
@@ -227,6 +228,13 @@
   </div>
   <div id="archGrid" class="archGrid"></div>
   <p id="archCount" class="small"></p>
+</dialog>
+
+<dialog id="dlgImage" class="dlg">
+  <div class="dlgHead"><h2 data-i18n="imgTitle">Your image</h2><button type="button" class="dlgX" data-close aria-label="Close">×</button></div>
+  <img id="shareImg" class="shareImg" alt="">
+  <div class="wsBtns"><button type="button" id="imgShare" class="primary" data-i18n="imgShare">Share</button><a id="imgDl" class="dlBtn" download="catnap.png" data-i18n="imgDownload">Download</a></div>
+  <p class="small" data-i18n="imgHint"></p>
 </dialog>
 
 <dialog id="dlgLevels" class="dlg wideDlg">

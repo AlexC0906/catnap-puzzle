@@ -1001,6 +1001,114 @@
     else if (k === 'escape' && hint) { clearHint(); update(); }
   });
 
+  // ---------- share image ----------
+  function resolveColor(v) {
+    const d = document.createElement('div');
+    d.style.color = v; d.style.display = 'none';
+    document.body.appendChild(d);
+    const c = getComputedStyle(d).color;
+    d.remove();
+    return c;
+  }
+  function catImage() {
+    const cs = getComputedStyle(document.body);
+    let body = $('cat').innerHTML;
+    for (let k = 0; k < 4 && body.includes('var('); k++) {
+      body = body.replace(/var\((--[\w-]+)(?:,([^()]*))?\)/g, (m, name, fb) => cs.getPropertyValue(name).trim() || (fb ? fb.trim() : 'none'));
+    }
+    const defs = $('galaxyFur').outerHTML;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs>${defs}</defs>${body}</svg>`;
+    return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
+  }
+  function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  async function makeShareImage() {
+    if (!P || !meta) return null;
+    try { await document.fonts.ready; } catch { /* fonts optional */ }
+    const W = 1080, H = 1350, n = P.n;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    const col = name => resolveColor(`var(${name})`);
+    const bg = col('--bg'), bg2 = col('--bg2'), ink = col('--ink'), soft = col('--soft'), line = col('--line'), accent = col('--accent'), gold = col('--gold'), card = col('--card');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = bg2;
+    ctx.beginPath(); ctx.arc(80, 40, 300, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W + 40, H + 20, 330, 0, Math.PI * 2); ctx.fill();
+    const cat = await catImage();
+    if (cat) ctx.drawImage(cat, 90, 64, 130, 130);
+    const head = 'Fredoka, Nunito, system-ui, sans-serif', bodyF = 'Nunito, system-ui, sans-serif';
+    ctx.fillStyle = ink; ctx.textBaseline = 'alphabetic';
+    ctx.font = `700 92px ${head}`; ctx.fillText(t('title'), 240, 150);
+    const sub = meta.kind === 'daily' ? t('dailyName', { date: longDate(meta.date) }) : meta.kind === 'level' ? `${t('levelName', { k: meta.level, total: LEVELS.length })} · ${t('chapters')[ACH.CHAPTERS[ACH.chapterOf(meta.level)].id]}` : meta.kind === 'custom' ? t('customName') : t('modeFree');
+    ctx.fillStyle = soft; ctx.font = `700 36px ${bodyF}`; ctx.fillText(sub, 244, 200);
+    // board
+    const B = 860, bx = (W - B) / 2, by = 250, pad = 18, inner = B - pad * 2, cell = inner / n;
+    ctx.fillStyle = 'rgba(0,0,0,.14)'; rrect(ctx, bx, by + 16, B, B, 40); ctx.fill();
+    ctx.fillStyle = line; rrect(ctx, bx, by, B, B, 40); ctx.fill();
+    ctx.save(); rrect(ctx, bx + pad, by + pad, inner, inner, 26); ctx.clip();
+    const regionCol = [...Array(10).keys()].map(k => col('--r' + k));
+    for (let i = 0; i < n * n; i++) {
+      const r = (i / n) | 0, c = i % n;
+      ctx.fillStyle = regionCol[P.colors ? P.colors[P.regions[i]] : P.regions[i]];
+      ctx.fillRect(bx + pad + c * cell, by + pad + r * cell, cell + 0.6, cell + 0.6);
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1.5;
+    for (let k = 1; k < n; k++) {
+      ctx.beginPath(); ctx.moveTo(bx + pad + k * cell, by + pad); ctx.lineTo(bx + pad + k * cell, by + pad + inner); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx + pad, by + pad + k * cell); ctx.lineTo(bx + pad + inner, by + pad + k * cell); ctx.stroke();
+    }
+    ctx.strokeStyle = line; ctx.lineWidth = n >= 9 ? 6 : 7; ctx.lineCap = 'round';
+    for (let i = 0; i < n * n; i++) {
+      const r = (i / n) | 0, c = i % n, x = bx + pad + c * cell, y = by + pad + r * cell, g = P.regions[i];
+      if (c < n - 1 && P.regions[i + 1] !== g) { ctx.beginPath(); ctx.moveTo(x + cell, y); ctx.lineTo(x + cell, y + cell); ctx.stroke(); }
+      if (r < n - 1 && P.regions[i + n] !== g) { ctx.beginPath(); ctx.moveTo(x, y + cell); ctx.lineTo(x + cell, y + cell); ctx.stroke(); }
+    }
+    if (cat) P.solution.forEach((c, r) => ctx.drawImage(cat, bx + pad + c * cell + cell * 0.1, by + pad + r * cell + cell * 0.1, cell * 0.8, cell * 0.8));
+    ctx.restore();
+    // stats row
+    const y0 = by + B + 88;
+    ctx.textAlign = 'center';
+    const items = [
+      [fmt(elapsed), t('time')],
+      [`${n}×${n}`, t('tier' + meta.tier)],
+      [hintsUsed === 0 ? '0' : String(hintsUsed), hintsUsed === 0 ? t('imgHints0') : hintsUsed === 1 ? t('imgHints1') : t('imgHints', { k: hintsUsed }).replace(/^\d+\s*/, '')]
+    ];
+    const colW = W / items.length;
+    items.forEach(([big, small], k) => {
+      const cx = colW * k + colW / 2;
+      ctx.fillStyle = card; rrect(ctx, cx - colW / 2 + 40, y0 - 70, colW - 80, 140, 28); ctx.fill();
+      const isStars = meta.kind === 'level' && k === 2;
+      ctx.fillStyle = isStars ? gold : ink; ctx.font = `600 ${isStars ? 56 : 62}px ${head}`;
+      ctx.fillText(isStars ? '★'.repeat(lastStars) + '☆'.repeat(3 - lastStars) : big, cx, y0 + 6);
+      ctx.fillStyle = soft; ctx.font = `700 28px ${bodyF}`; ctx.fillText(small, cx, y0 + 46);
+    });
+    ctx.fillStyle = accent; ctx.font = `800 30px ${bodyF}`;
+    ctx.fillText(SITE.replace(/^https:\/\//, '').replace(/\/$/, ''), W / 2, H - 28);
+    ctx.textAlign = 'left';
+    return new Promise(res => cv.toBlob(b => res(b), 'image/png'));
+  }
+  let imgBlob = null, imgUrl = null;
+  async function openImage() {
+    const blob = await makeShareImage();
+    if (!blob) return;
+    imgBlob = blob;
+    if (imgUrl) URL.revokeObjectURL(imgUrl);
+    imgUrl = URL.createObjectURL(blob);
+    $('shareImg').src = imgUrl;
+    $('shareImg').alt = `${t('title')} · ${P.n}×${P.n}`;
+    $('imgDl').href = imgUrl;
+    $('imgDl').download = `catnap-${meta.id}.png`;
+    const file = new File([blob], 'catnap.png', { type: 'image/png' });
+    let canShare = false;
+    try { canShare = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch { canShare = false; }
+    $('imgShare').hidden = !canShare;
+    openDlg('dlgImage');
+  }
+  $('imgBtn').addEventListener('click', openImage);
+  $('imgShare').addEventListener('click', async () => {
+    if (!imgBlob) return;
+    try { await navigator.share({ files: [new File([imgBlob], 'catnap.png', { type: 'image/png' })], text: SITE }); } catch { /* cancelled */ }
+  });
+
   // ---------- marathon ----------
   const MAR = { time: 300000, bonus: 15000, hintCost: 20000, skipCost: 30000 };
   const MAR_SEQ = [[5, 0], [5, 0], [6, 0], [6, 1], [6, 1], [7, 0], [7, 1], [7, 1], [8, 1], [7, 2], [8, 1], [8, 2], [9, 1], [8, 2], [9, 2], [10, 1], [9, 2], [10, 2]];
