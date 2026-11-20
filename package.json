@@ -1,0 +1,10 @@
+{
+  "name": "mustati",
+  "version": "1.0.0",
+  "description": "Un puzzle logic cu pisici: câte o pisică pe fiecare rând, coloană și zonă colorată.",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT"
+}
