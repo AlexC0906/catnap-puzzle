@@ -1,4 +1,4 @@
-// Mustăți — puzzle engine: seeded RNG, solver, generator.
+// Catnap — puzzle engine: seeded RNG, solver, generator.
 // Rules: N×N board split into N colored regions. Place N cats so that each
 // row, each column and each region holds exactly one cat, and no two cats
 // touch (not even diagonally).
@@ -176,5 +176,5 @@
   // Basic difficulty estimate: how much a simple logic pass can deduce.
   const api = { mulberry32, hashString, generate, solve, randomPlacement, growRegions };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.MustatiEngine = api;
+  else root.CatnapEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
