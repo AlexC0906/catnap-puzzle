@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mustăți — puzzle cu pisici</title>
+<meta name="description" content="Un puzzle logic cu pisici: câte o pisică pe fiecare rând, coloană și zonă colorată.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="cat" viewBox="0 0 100 100">
+      <path d="M16 46 L14 10 L40 28 Q50 25 60 28 L86 10 L84 46 Q90 60 84 74 Q72 92 50 92 Q28 92 16 74 Q10 60 16 46Z" fill="var(--cat)"/>
+      <path d="M20 18 L36 30 L22 40Z M80 18 L64 30 L78 40Z" fill="var(--cat-ear)"/>
+      <path d="M38 34 Q44 40 50 34 Q56 40 62 34" stroke="var(--cat-stripe)" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <ellipse cx="50" cy="72" rx="20" ry="13" fill="var(--cat-muzzle)"/>
+      <path d="M30 56 Q36 51 42 56 M58 56 Q64 51 70 56" stroke="var(--cat-face)" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+      <path d="M46 66 L54 66 L50 71Z" fill="var(--cat-nose)"/>
+      <path d="M50 71 Q50 77 44 77 M50 71 Q50 77 56 77" stroke="var(--cat-face)" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M30 68 L6 63 M30 73 L6 76 M70 68 L94 63 M70 73 L94 76" stroke="var(--cat-face)" stroke-width="2.4" stroke-linecap="round" opacity=".75"/>
+    </symbol>
+    <symbol id="ex" viewBox="0 0 100 100">
+      <path d="M30 30 L70 70 M70 30 L30 70" stroke="currentColor" stroke-width="11" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <svg class="logo" aria-hidden="true"><use href="#cat"/></svg>
+    <div>
+      <h1>Mustăți</h1>
+      <p class="tag">Câte o pisică pe fiecare rând, coloană și pernă colorată. Și nicio pisică nu stă lipită de alta.</p>
+    </div>
+  </div>
+  <nav class="modes" aria-label="Alege puzzle-ul">
+    <button class="mode" id="daily" type="button">Puzzle-ul zilei</button>
+    <div class="sizes" role="group" aria-label="Mărimea tablei" id="sizes"></div>
+    <button class="mode ghost" id="newGame" type="button">Puzzle nou</button>
+  </nav>
+</header>
+
+<main class="play">
+  <section class="boardWrap" aria-label="Tabla de joc">
+    <div class="boardFrame">
+      <div id="board" class="board" role="grid"></div>
+      <div id="win" class="win" hidden>
+        <div class="winCard">
+          <svg class="winCat" aria-hidden="true"><use href="#cat"/></svg>
+          <h2>Miau! Ai rezolvat.</h2>
+          <p id="winText"></p>
+          <div class="winBtns">
+            <button id="share" type="button" class="primary">Copiază rezultatul</button>
+            <button id="winNext" type="button">Încă unul</button>
+          </div>
+          <p id="shareMsg" class="small" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+    <p class="howto small">Apasă o dată pentru <b>×</b>, de două ori pentru o pisică. Trage cu degetul ca să pui mai multe <b>×</b> deodată.</p>
+  </section>
+
+  <aside class="side">
+    <div class="stats">
+      <div><span class="label">Timp</span><span id="timer" class="big">0:00</span></div>
+      <div><span class="label">Pisici</span><span id="catCount" class="big">0/8</span></div>
+    </div>
+    <p id="puzzleName" class="small puzzleName"></p>
+    <div class="controls">
+      <button id="undo" type="button">Anulează</button>
+      <button id="hint" type="button">Indiciu</button>
+      <button id="reset" type="button">De la capăt</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="autoX"> <span>Pune × automat lângă pisici</span></label>
+    <label class="toggle"><input type="checkbox" id="showErr" checked> <span>Arată greșelile</span></label>
+    <p id="hintMsg" class="small hintMsg" aria-live="polite"></p>
+
+    <details class="rules" open>
+      <summary>Regulile</summary>
+      <ol>
+        <li>Fiecare rând are exact o pisică.</li>
+        <li>Fiecare coloană are exact o pisică.</li>
+        <li>Fiecare pernă colorată are exact o pisică.</li>
+        <li>Pisicile nu se ating, nici măcar pe diagonală.</li>
+      </ol>
+      <p class="small">Fiecare puzzle are o singură soluție, deci nu trebuie să ghicești.</p>
+    </details>
+
+    <details class="records">
+      <summary>Recordurile tale</summary>
+      <table id="recTable"><thead><tr><th>Tablă</th><th>Cel mai bun timp</th><th>Rezolvate</th></tr></thead><tbody></tbody></table>
+    </details>
+  </aside>
+</main>
+
+<footer class="foot small">Făcut cu Claude · cod sursă liber (MIT)</footer>
+
+<script src="src/engine.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>
