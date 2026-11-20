@@ -101,9 +101,9 @@ button:focus-visible,input:focus-visible+span,a:focus-visible{outline:3px solid 
 /* play area */
 .play{max-width:1180px;margin:0 auto;padding:16px max(4vw,16px) 20px;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:clamp(18px,3vw,36px);align-items:start}
 .boardWrap{display:flex;flex-direction:column;align-items:center}
-.boardFrame{position:relative;width:min(100%,640px,calc(100vh - 300px));min-width:min(100%,300px);aspect-ratio:1;padding:10px;border-radius:22px;background:var(--line);box-shadow:0 10px 0 rgba(0,0,0,.14)}
-.boardWrap{padding-top:50px}
-.mascot{position:absolute;top:-66px;right:9%;width:132px;height:92px;z-index:7;pointer-events:none;overflow:visible}
+.boardFrame{position:relative;width:min(100%,640px,calc(100vh - 350px));min-width:min(100%,300px);aspect-ratio:1;padding:10px;border-radius:22px;background:var(--line);box-shadow:0 10px 0 rgba(0,0,0,.14)}
+.boardWrap{padding-top:64px}
+.mascot{position:absolute;top:-82px;right:9%;width:132px;height:92px;z-index:7;pointer-events:none;overflow:visible}
 .mascot .mHead{transform-origin:60px 80px;transition:transform .3s}
 .mascot .eyes{display:none}
 .mascot .eyes.open{display:inline}
@@ -286,8 +286,8 @@ th:first-child,td:first-child{text-align:left}
   .side{max-width:640px;width:100%;justify-self:center}
 }
 @media(max-width:600px){
-  .boardWrap{padding-top:36px}
-  .mascot{width:96px;height:67px;top:-48px}
+  .boardWrap{padding-top:48px}
+  .mascot{width:96px;height:67px;top:-61px}
   .top{padding-top:12px;flex-wrap:nowrap;gap:8px}
   .brand{gap:8px}
   .logo{width:40px;height:40px}
