@@ -103,8 +103,19 @@ button:focus-visible,input:focus-visible+span,a:focus-visible{outline:3px solid 
 .boardWrap{display:flex;flex-direction:column;align-items:center}
 .boardFrame{position:relative;width:min(100%,640px,calc(100vh - 350px));min-width:min(100%,300px);aspect-ratio:1;padding:10px;border-radius:22px;background:var(--line);box-shadow:0 10px 0 rgba(0,0,0,.14)}
 .boardWrap{padding-top:64px}
-.mascot{position:absolute;top:-82px;right:9%;width:132px;height:92px;z-index:7;pointer-events:none;overflow:visible}
+.mascot{position:absolute;top:-82px;right:9%;width:132px;height:92px;z-index:7;pointer-events:none;overflow:visible;touch-action:none}
 .mascot .mHead{transform-origin:60px 80px;transition:transform .3s}
+.mascot .mHead,.mascot .paws{pointer-events:visiblePainted;cursor:grab;touch-action:none}
+.mascot .blush{opacity:0;transition:opacity .3s}
+.mascot.pet .blush{opacity:.7}
+.mascot.pet .eyes.open{display:none}
+.mascot.pet .eyes.happy{display:inline}
+.mascot.pet .mHead{transform:rotate(var(--tilt,0deg)) translateY(-2px)}
+.mascot.hop .mHead{animation:hop .45s ease-in-out}
+.bubble{position:absolute;bottom:calc(100% + 28px);right:calc(9% + 120px);max-width:min(280px,60%);background:var(--card);color:var(--ink);border:2.5px solid var(--line);border-radius:18px 18px 4px 18px;padding:8px 12px;font-weight:700;font-size:15px;line-height:1.35;box-shadow:0 4px 0 var(--line);z-index:9;animation:pop .25s cubic-bezier(.3,1.6,.6,1);pointer-events:none;text-wrap:pretty}
+.petLayer{position:absolute;right:9%;bottom:100%;width:132px;height:150px;pointer-events:none;z-index:8}
+.petLayer svg{position:absolute;bottom:20px;width:18px;height:18px;color:#ff6f8e;animation:heart 1.4s ease-out forwards}
+@keyframes heart{0%{transform:translate(0,0) scale(.4);opacity:0}15%{opacity:1;transform:translate(0,-10px) scale(1)}100%{transform:translate(var(--dx),-110px) scale(.8);opacity:0}}
 .mascot .eyes{display:none}
 .mascot .eyes.open{display:inline}
 .mascot.happy .eyes.open,.mascot.sleep .eyes.open,.mascot.scared .eyes.open{display:none}
@@ -311,6 +322,8 @@ th:first-child,td:first-child{text-align:left}
 @media(max-width:600px){
   .boardWrap{padding-top:48px}
   .mascot{width:96px;height:67px;top:-61px}
+  .bubble{right:calc(9% + 90px);bottom:calc(100% + 18px);font-size:14px;max-width:62%}
+  .petLayer{width:96px}
   .top{padding-top:12px;flex-wrap:nowrap;gap:8px}
   .brand{gap:8px}
   .logo{width:40px;height:40px}

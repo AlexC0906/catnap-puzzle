@@ -52,6 +52,7 @@
     <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
     <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 3.5h10v5a5 5 0 0 1-10 0Z" fill="currentColor"/><path d="M7 5.5H4.2c0 3 1.2 4.6 3.3 5M17 5.5h2.8c0 3-1.2 4.6-3.3 5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.5 13.2h3l.6 4h-4.2Z M8 18h8v2.6H8Z" fill="currentColor"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 8.5V13l3 2M9.5 2.5h5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.2 0 3.6 1.2 5.3 3.2 1.7-2 3.1-3.2 5.3-3.2 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21Z" fill="currentColor"/></symbol>
     <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2.5c1 3.5 5.5 6 5.5 11a5.5 5.5 0 0 1-11 0c0-2.6 1.5-4.2 2.6-5.2.2 1.6 1 2.7 2 3.2-.6-3.4.2-6.4.9-9Z" fill="currentColor"/></symbol>
   </defs>
 </svg>
@@ -84,6 +85,8 @@
 <main class="play">
   <section class="boardWrap" data-i18n-label="boardLabel">
     <div class="boardFrame" id="frame">
+      <div id="bubble" class="bubble" role="status" aria-live="polite" hidden></div>
+      <div id="petLayer" class="petLayer" aria-hidden="true"></div>
       <svg id="mascot" class="mascot" viewBox="0 0 120 84" aria-hidden="true">
         <g class="mHead">
           <path d="M22 70 L16 14 L46 34 Q60 30 74 34 L104 14 L98 70Z" style="fill:var(--cat)"/>
@@ -100,6 +103,7 @@
           <g class="eyes happy"><path d="M37 60 Q44 51 51 60 M69 60 Q76 51 83 60" style="stroke:var(--cat-face)" stroke-width="4.5" fill="none" stroke-linecap="round"/></g>
           <g class="eyes sleep"><path d="M37 58 Q44 63 51 58 M69 58 Q76 63 83 58" style="stroke:var(--cat-face)" stroke-width="4" fill="none" stroke-linecap="round"/></g>
           <g class="eyes scared"><circle cx="44" cy="57" r="9.5" fill="#fff"/><circle cx="76" cy="57" r="9.5" fill="#fff"/><circle cx="44" cy="57" r="2.6" style="fill:var(--cat-face)"/><circle cx="76" cy="57" r="2.6" style="fill:var(--cat-face)"/></g>
+          <ellipse class="blush" cx="33" cy="70" rx="6" ry="3.5" fill="#ff8fa3"/><ellipse class="blush" cx="87" cy="70" rx="6" ry="3.5" fill="#ff8fa3"/>
           <path d="M56 68 L64 68 L60 72Z" style="fill:var(--cat-nose)"/>
         </g>
         <g class="zz" style="fill:var(--ink)" font-family="Fredoka,Nunito,sans-serif"><text x="98" y="26" font-size="17" font-weight="700">z</text><text x="108" y="12" font-size="12" font-weight="700">z</text></g>

@@ -74,7 +74,44 @@
     meow
   };
 
+  // Purring: low filtered noise, amplitude-modulated at ~26 Hz, breathing in and out.
+  let purrNodes = null;
+  function purrStart() {
+    const c = ac(); if (!c || purrNodes) return;
+    const len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180; lp.Q.value = 1.2;
+    const am = c.createGain(); am.gain.value = 0;
+    const lfo = c.createOscillator(); lfo.frequency.value = 26;
+    const lfoGain = c.createGain(); lfoGain.gain.value = 0.5;
+    lfo.connect(lfoGain).connect(am.gain);
+    const breath = c.createGain(); breath.gain.value = 0.0001;
+    const t = c.currentTime;
+    breath.gain.exponentialRampToValueAtTime(1.4, t + 0.25);
+    // in-out breathing
+    const slow = c.createOscillator(); slow.frequency.value = 0.55;
+    const slowGain = c.createGain(); slowGain.gain.value = 0.5;
+    slow.connect(slowGain).connect(breath.gain);
+    src.connect(lp).connect(am).connect(breath).connect(master);
+    src.start(); lfo.start(); slow.start();
+    purrNodes = { src, lfo, slow, breath };
+  }
+  function purrStop() {
+    if (!purrNodes || !ctx) return;
+    const n = purrNodes; purrNodes = null;
+    const t = ctx.currentTime;
+    try {
+      n.breath.gain.cancelScheduledValues(t);
+      n.breath.gain.setValueAtTime(n.breath.gain.value || 0.5, t);
+      n.breath.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      [n.src, n.lfo, n.slow].forEach(o => o.stop(t + 0.45));
+    } catch { /* already stopped */ }
+  }
+
   root.CatnapAudio = {
+    purrStart() { if (enabled) try { purrStart(); } catch { /* audio unavailable */ } },
+    purrStop() { try { purrStop(); } catch { /* ignore */ } },
     play(name, ...args) { if (enabled && S[name]) try { S[name](...args); } catch { /* audio unavailable */ } },
     get enabled() { return enabled; },
     set enabled(v) { enabled = !!v; }

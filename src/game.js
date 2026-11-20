@@ -255,6 +255,7 @@
     if (newlyBad.length) {
       newlyBad.forEach(i => { const c = els[i].querySelector('.c'); if (c) { c.classList.remove('hiss'); void c.getBBox; requestAnimationFrame(() => c.classList.add('hiss')); } });
       setMood('scared', 1300);
+      if (Math.random() < 0.5) sayFrom('sayConflict');
     }
     $('catCount').textContent = `${count}/${n}`;
     $('undo').disabled = !history.length || won;
@@ -726,6 +727,7 @@
   function showWin(celebrate) {
     $('board').classList.add('won');
     setMood('happy');
+    if (celebrate) setTimeout(() => say(pick(t('sayWin')), 3000, true), 300);
     ['undo', 'hint', 'pause'].forEach(id => { $(id).disabled = true; });
     els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
     renderWinText();
@@ -1260,7 +1262,7 @@
 
   // ---------- mascot ----------
   const mascot = $('mascot');
-  let moodTimer = null, idleTimer = null, mood = '', eyeRaf = 0;
+  let moodTimer = null, idleTimer = null, stuckTimer = null, mood = '', eyeRaf = 0;
   function baseMood() { return won ? 'happy' : paused ? 'sleep' : hint ? 'think' : ''; }
   function setMood(m, ms) {
     clearTimeout(moodTimer);
@@ -1272,6 +1274,8 @@
   function poke() {
     clearTimeout(idleTimer);
     if (mood === 'sleep' && !paused) setMood(baseMood());
+    clearTimeout(stuckTimer);
+    stuckTimer = setTimeout(() => { if (P && !won && !editing && !hint && !paused && ticking) sayFrom('sayStuck'); }, 45000);
     idleTimer = setTimeout(() => { if (P && !won && !editing && !hint) setMood('sleep'); }, 25000);
   }
   document.addEventListener('pointermove', e => {
@@ -1287,6 +1291,92 @@
   }, { passive: true });
   document.addEventListener('keydown', poke);
   document.addEventListener('pointerdown', poke);
+
+  // speech bubble
+  let bubbleTimer = null, lastSay = 0;
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  function say(text, ms = 3200, force = false) {
+    const now = Date.now();
+    if (!force && now - lastSay < 2500) return;
+    lastSay = now;
+    const b = $('bubble');
+    b.textContent = text;
+    b.hidden = false;
+    b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => { b.hidden = true; }, ms);
+  }
+  const sayFrom = key => say(pick(t(key)));
+
+  // petting: stroke the head to make it purr, tap it to make it meow
+  const mHead = mascot.querySelector('.mHead'), mPaws = mascot.querySelector('.paws');
+  let pet = null, purrTimer = null, heartTimer = 0, petCounted = false, petSaveTimer = null;
+  function heart() {
+    const h = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    h.innerHTML = '<use href="#i-heart"/>';
+    h.style.left = `${30 + Math.random() * 50}%`;
+    h.style.setProperty('--dx', `${(Math.random() - 0.5) * 50}px`);
+    $('petLayer').appendChild(h);
+    setTimeout(() => h.remove(), 1500);
+  }
+  function petMove(e) {
+    if (!pet) return;
+    const dx = e.clientX - pet.x, dy = e.clientY - pet.y;
+    pet.dist += Math.hypot(dx, dy);
+    pet.x = e.clientX; pet.y = e.clientY;
+    if (pet.dist > 24) {
+      if (!mascot.classList.contains('pet')) {
+        if (mood === 'sleep' || mood === 'scared') setMood(won ? 'happy' : '');
+        mascot.classList.add('pet');
+        A.purrStart();
+        if (!petCounted) {
+          petCounted = true;
+          progress.pets = (progress.pets || 0) + 1;
+          clearTimeout(petSaveTimer);
+          petSaveTimer = setTimeout(() => {
+            const got = ACH.check(progress, null); saveProgress();
+            got.forEach((id, k) => setTimeout(() => { A.play('unlock'); toast(t('achUnlocked', { name: t('ach')[id][0] })); }, k * 2600));
+          }, 800);
+          if (Math.random() < 0.6) sayFrom('sayPet');
+        }
+      }
+      mascot.style.setProperty('--tilt', `${Math.max(-10, Math.min(10, dx * 1.5))}deg`);
+      const now = performance.now();
+      if (now - heartTimer > 320) { heartTimer = now; heart(); }
+      clearTimeout(purrTimer);
+      purrTimer = setTimeout(endPet, 700);
+    }
+  }
+  function endPet() {
+    mascot.classList.remove('pet');
+    mascot.style.removeProperty('--tilt');
+    A.purrStop();
+    petCounted = false;
+  }
+  function petDown(e) {
+    e.preventDefault(); e.stopPropagation();
+    pet = { x: e.clientX, y: e.clientY, dist: 0, t: performance.now(), pointer: e.pointerId };
+    try { mascot.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  function petUp(e) {
+    if (!pet) return;
+    const quick = pet.dist < 12 && performance.now() - pet.t < 400;
+    pet = null;
+    if (quick) {
+      A.play('meow', 0.9 + Math.random() * 0.35);
+      mascot.classList.remove('hop'); void mascot.getBoundingClientRect(); mascot.classList.add('hop');
+      setTimeout(() => mascot.classList.remove('hop'), 500);
+      if (mood === 'sleep') setMood(baseMood());
+      say(Math.random() < 0.55 ? `${t('sayFactIntro')} ${pick(t('sayFacts'))}` : pick(t('sayPet')), 4200, true);
+    }
+  }
+  [mHead, mPaws].forEach(el => el.addEventListener('pointerdown', petDown));
+  mascot.addEventListener('pointermove', petMove);
+  // mouse users can pet just by hovering and moving over the head
+  [mHead, mPaws].forEach(el => el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse' && !pet) pet = { x: e.clientX, y: e.clientY, dist: 0, t: performance.now(), hover: true }; }));
+  [mHead, mPaws].forEach(el => el.addEventListener('pointerleave', () => { if (pet && pet.hover) pet = null; }));
+  mascot.addEventListener('pointerup', petUp);
+  mascot.addEventListener('pointercancel', () => { pet = null; });
 
   // ---------- boot ----------
   if (ACH.check(progress, null).length) saveProgress();
@@ -1309,6 +1399,7 @@
   });
   route(location.hash.slice(1), true);
   if (!store.get('seenHelp', false)) setTimeout(openHelp, 400);
+  else setTimeout(() => say(pick(t('sayHello')) + ' ' + t('petHint'), 3600, true), 1200);
 
   if ('serviceWorker' in navigator && /^https:$/.test(location.protocol) && /github\.io$/.test(location.hostname)) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
