@@ -153,6 +153,8 @@ button:focus-visible,input:focus-visible+span,a:focus-visible{outline:3px solid 
 .badge{font-size:13px;font-weight:800;padding:3px 10px;border-radius:999px;border:2px solid var(--line);white-space:nowrap}
 .badge.t0{background:var(--r2)}.badge.t1{background:var(--r1)}.badge.t2{background:var(--r0)}.badge.t3{background:var(--r4)}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.noTimer .stats>div:first-child{display:none}
+.noTimer .stats{grid-template-columns:1fr}
 .stats>div{background:var(--bg);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column}
 .label{font-size:13px;font-weight:700;color:var(--soft)}
 .big{font:600 32px/1.1 Fredoka,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}

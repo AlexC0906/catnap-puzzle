@@ -29,7 +29,7 @@
     set(k, v) { try { localStorage.setItem('catnap:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
     clear() { try { Object.keys(localStorage).filter(k => k.startsWith('catnap:')).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } }
   };
-  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, skin: 'ginger' });
+  const defaultSettings = () => ({ sound: true, autoX: false, showErr: true, cb: false, coach: false, hideTimer: false, skin: 'ginger' });
   const defaultProgress = () => ({ stars: {}, best: {}, solved: 0, byTier: [0, 0, 0, 0], daily: { last: null, streak: 0, best: 0, done: {} }, skins: ['ginger'] });
   let settings = Object.assign(defaultSettings(), store.get('settings', {}));
   let progress = Object.assign(defaultProgress(), store.get('progress', {}));
@@ -128,6 +128,7 @@
   function start(puzzle, m) {
     P = puzzle; meta = m;
     geom = LG.makeGeometry(P.n, P.regions);
+    if (!P.colors) P.colors = assignColors(P.n, P.regions);
     const N = P.n * P.n;
     const saved = store.get('save:' + m.id, null);
     cells = new Array(N).fill(EMPTY); history = []; batch = null;
@@ -146,6 +147,35 @@
     else if (coachActive()) showHint(computeHint(), false);
   }
 
+  // ---------- colors ----------
+  // Palette pairs that look alike; keep them away from neighbouring cushions.
+  const SIMILAR = [[1, 8], [2, 6], [2, 7], [3, 9], [4, 9], [0, 5], [0, 8], [6, 7], [3, 7]];
+  const simSet = new Set(SIMILAR.flatMap(([a, b]) => [a * 10 + b, b * 10 + a]));
+  function assignColors(n, regions) {
+    const adj = Array.from({ length: n }, () => new Set());
+    for (let i = 0; i < n * n; i++) {
+      const r = (i / n) | 0, c = i % n;
+      for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= n || cc < 0 || cc >= n) continue;
+        const a = regions[i], b = regions[rr * n + cc];
+        if (a !== b) { adj[a].add(b); adj[b].add(a); }
+      }
+    }
+    const cost = map => { let k = 0; for (let a = 0; a < n; a++) for (const b of adj[a]) if (b > a && simSet.has(map[a] * 10 + map[b])) k++; return k; };
+    const rnd = E.mulberry32(E.hashString(regions.join('')));
+    let best = [...Array(n).keys()], bestCost = cost(best);
+    // pool: when n < 10 we may also pick which palette entries to use
+    for (let tries = 0; tries < 400 && bestCost > 0; tries++) {
+      const pool = [...Array(10).keys()];
+      for (let k = pool.length - 1; k > 0; k--) { const j = Math.floor(rnd() * (k + 1)); [pool[k], pool[j]] = [pool[j], pool[k]]; }
+      const map = pool.slice(0, n);
+      const c = cost(map);
+      if (c < bestCost) { best = map; bestCost = c; }
+    }
+    return best;
+  }
+
   // ---------- board ----------
   function buildBoard(board, p, interactive) {
     const { n, regions } = p;
@@ -159,7 +189,7 @@
       const diff = (rr, cc) => rr < 0 || cc < 0 || rr >= n || cc >= n ? false : regions[rr * n + cc] !== g;
       const b = (rr, cc) => diff(rr, cc) ? thick : '0px';
       const tag = interactive ? 'button type="button" role="gridcell"' : 'div';
-      html += `<${tag} class="cell" data-i="${i}" data-l="${LETTERS[g]}" style="--rc:var(--r${g});--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}"></${interactive ? 'button' : 'div'}>`;
+      html += `<${tag} class="cell" data-i="${i}" data-l="${LETTERS[g]}" style="--rc:var(--r${p.colors ? p.colors[g] : g});--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}"></${interactive ? 'button' : 'div'}>`;
     }
     board.innerHTML = html;
     if (interactive) els = [...board.children];
@@ -340,7 +370,7 @@
 
   // ---------- hints ----------
   const coachActive = () => P && !won && meta && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
-  const colorName = g => t('colors')[g];
+  const colorName = g => t('colors')[P && P.colors ? P.colors[g] : g];
   function unitName(u, cap) {
     if (u.kind === 'region') return t(cap ? 'Region' : 'region', { color: colorName(u.index) });
     return t((cap ? (u.kind === 'row' ? 'Row' : 'Col') : u.kind), { k: u.index + 1 });
@@ -431,7 +461,15 @@
     const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
     return (h ? h + ':' + pad(m) : m) + ':' + pad(sec);
   }
-  setInterval(() => { if (P) $('timer').textContent = fmt(currentElapsed()); }, 250);
+  setInterval(() => {
+    if (P) $('timer').textContent = fmt(currentElapsed());
+    const cd = $('winCountdown');
+    if (!cd.hidden) {
+      const now = new Date(), next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const s = Math.max(0, Math.floor((next - now) / 1000));
+      cd.textContent = t('nextDaily', { t: `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}` });
+    }
+  }, 250);
 
   // ---------- win ----------
   function finish() {
@@ -463,6 +501,7 @@
   }
   function showWin(celebrate) {
     $('board').classList.add('won');
+    ['undo', 'hint', 'pause'].forEach(id => { $(id).disabled = true; });
     els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
     renderWinText();
     $('shareMsg').textContent = '';
@@ -483,6 +522,7 @@
     if (lastRecord) extra.push(t('winRecord'));
     if (meta.kind === 'daily' && meta.date === todayKey()) { const s = progress.daily.streak; extra.push(t('streakLine', { k: s, k1: s === 1 ? t('day1') : t('dayN') })); }
     $('winExtra').textContent = extra.join(' · ');
+    $('winCountdown').hidden = !(meta.kind === 'daily' && meta.date === todayKey());
     $('winStars').innerHTML = meta.kind === 'level' ? [1, 2, 3].map(s => `<svg class="${s <= lastStars ? 'on' : ''}"><use href="#i-star"/></svg>`).join('') : '';
   }
   $('win').addEventListener('click', e => { if (e.target === $('win')) $('win').hidden = true; });
@@ -545,9 +585,9 @@
     } else if (mode === 'journey') {
       const k = meta?.kind === 'level' ? meta.level : store.get('level', 1);
       const st = progress.stars[k] || 0;
-      mb.innerHTML = `<button class="navBtn" id="lvPrev" type="button" aria-label="Previous"${k <= 1 ? ' disabled' : ''}><svg><use href="#i-left"/></svg></button>
+      mb.innerHTML = `<button class="navBtn" id="lvPrev" type="button" aria-label="${t('prev')}"${k <= 1 ? ' disabled' : ''}><svg><use href="#i-left"/></svg></button>
         <button class="pill lvlBtn" id="lvOpen" type="button">${t('levelName', { k, total: LEVELS.length })} <span class="lvlStars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></button>
-        <button class="navBtn" id="lvNext" type="button" aria-label="Next"${k >= LEVELS.length || !levelOpen(k + 1) ? ' disabled' : ''}><svg><use href="#i-right"/></svg></button>`;
+        <button class="navBtn" id="lvNext" type="button" aria-label="${t('nextLevel')}"${k >= LEVELS.length || !levelOpen(k + 1) ? ' disabled' : ''}><svg><use href="#i-right"/></svg></button>`;
       $('lvPrev').onclick = () => loadLevel(k - 1);
       $('lvNext').onclick = () => loadLevel(k + 1);
       $('lvOpen').onclick = openLevels;
@@ -641,7 +681,7 @@
     const L = LEVELS[0], regions = [...L.r].map(Number), sol = E.solve(L.n, regions, 1)[0];
     const host = $('helpBoard');
     host.innerHTML = '<div class="board"></div>';
-    const b = buildBoard(host.firstChild, { n: L.n, regions }, false);
+    const b = buildBoard(host.firstChild, { n: L.n, regions, colors: assignColors(L.n, regions) }, false);
     [...b.children].forEach((el, i) => { if (sol[(i / L.n) | 0] === i % L.n) el.innerHTML = '<svg class="c"><use href="#cat"/></svg>'; });
     openDlg('dlgHelp');
   }
@@ -672,6 +712,7 @@
     $('optErr').checked = settings.showErr;
     $('optCb').checked = settings.cb;
     $('optCoach').checked = settings.coach;
+    $('optTimer').checked = settings.hideTimer;
     document.querySelectorAll('#langSeg [data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === I.lang)));
     $('skins').innerHTML = SKINS.map(s => {
       const ok = s.ok(progress);
@@ -685,6 +726,7 @@
   bindOpt('optAutoX', 'autoX', update);
   bindOpt('optErr', 'showErr', update);
   bindOpt('optCb', 'cb', applyLook);
+  bindOpt('optTimer', 'hideTimer', applyLook);
   bindOpt('optCoach', 'coach', () => { if (coachActive() && !hint) showHint(computeHint(), false); else if (!coachActive()) { clearHint(); update(); } });
   $('langSeg').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) { setLang(b.dataset.lang); renderSettings(); } });
   $('skins').addEventListener('click', e => {
@@ -707,7 +749,7 @@
 
   function applyLook() {
     const skin = SKINS.find(s => s.id === settings.skin && s.ok(progress)) ? settings.skin : 'ginger';
-    document.body.className = 'skin-' + skin + (settings.cb ? ' cb' : '');
+    document.body.className = 'skin-' + skin + (settings.cb ? ' cb' : '') + (settings.hideTimer ? ' noTimer' : '');
     A.enabled = settings.sound;
   }
 
