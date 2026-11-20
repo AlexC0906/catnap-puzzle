@@ -75,6 +75,7 @@
   <button role="tab" id="tabDaily" data-mode="daily" type="button" data-i18n="modeDaily">Daily</button>
   <button role="tab" id="tabJourney" data-mode="journey" type="button" data-i18n="modeJourney">Journey</button>
   <button role="tab" id="tabFree" data-mode="free" type="button" data-i18n="modeFree">Free play</button>
+  <button role="tab" id="tabWorkshop" data-mode="workshop" type="button" data-i18n="modeWorkshop">Workshop</button>
 </nav>
 
 <div class="modebar" id="modebar"></div>
@@ -131,6 +132,16 @@
         <button id="hintApply" type="button" class="primary" data-i18n="apply">Apply</button>
         <button id="hintClose" type="button" data-i18n="close">Close</button>
       </div>
+    </div>
+    <div id="editPanel" class="editPanel">
+      <p class="small" data-i18n="wsHelp"></p>
+      <div id="palette" class="palette"></div>
+      <ul id="wsChecks" class="wsChecks"></ul>
+      <div class="wsBtns">
+        <button id="wsPlay" type="button" class="primary" data-i18n="wsPlay">Play</button>
+        <button id="wsCopy" type="button" data-i18n="wsCopy">Copy link</button>
+      </div>
+      <p id="wsMsg" class="small" aria-live="polite"></p>
     </div>
     <details class="rules">
       <summary data-i18n="rules">Rules</summary>

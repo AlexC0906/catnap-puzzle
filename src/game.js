@@ -117,6 +117,7 @@
     renderTabs();
     if (m === 'daily') loadDaily(opts.date);
     else if (m === 'journey') loadLevel(opts.level ?? store.get('level', firstOpenLevel()));
+    else if (m === 'workshop') { if (opts.custom) loadCustom(opts.custom.n, opts.custom.regions); else openEditor(); }
     else loadFree(opts.n ?? free.n, opts.tier ?? free.tier, opts.seed ?? (opts.fresh ? undefined : free.seed));
     renderModebar();
   }
@@ -127,6 +128,7 @@
   const levelOpen = k => k === 1 || !!progress.stars[k - 1] || !!progress.stars[k];
 
   function start(puzzle, m) {
+    if (editing) stopEditing();
     P = puzzle; meta = m;
     geom = LG.makeGeometry(P.n, P.regions);
     if (!P.colors) P.colors = assignColors(P.n, P.regions);
@@ -248,6 +250,148 @@
     store.set('save:' + meta.id, { cells, elapsed: currentElapsed(), hints: hintsUsed, won, stars: lastStars });
   }
 
+  // ---------- workshop ----------
+  let editing = false, ed = null, brush = 0, wsValid = false, edTouched = false;
+  const encodeRegions = r => r.join('');
+  function loadCustom(n, regions) {
+    ++loadToken;
+    const sols = E.solve(n, regions, 2);
+    if (sols.length !== 1) { openEditor({ n, regions }); return; }
+    const tier = LG.tierOf(LG.rate(n, regions));
+    start({ n, regions, solution: sols[0], tier: tier < 0 ? 3 : tier, colors: [...Array(n).keys()] },
+      { kind: 'custom', id: `c-${n}-${encodeRegions(regions)}`, tier: tier < 0 ? 3 : tier });
+  }
+  function openEditor(from) {
+    ++loadToken;
+    const saved = store.get('workshop', null);
+    ed = from ? { n: from.n, regions: from.regions.slice() } : saved && saved.regions && saved.regions.length === saved.n * saved.n ? saved : { n: 7, regions: new Array(49).fill(-1) };
+    editing = true; P = null; meta = null; hint = null;
+    ticking = false; won = false; paused = false;
+    $('win').hidden = true; $('pauseOv').hidden = true; $('hintBox').hidden = true;
+    document.querySelector('.side').classList.add('editing');
+    try { window.history.replaceState(null, '', '#workshop'); } catch { /* sandboxed */ }
+    if (brush >= ed.n) brush = 0;
+    buildEditBoard();
+    renderPalette();
+    validateEditor();
+    renderModebar();
+  }
+  function stopEditing() {
+    editing = false;
+    document.querySelector('.side').classList.remove('editing');
+    $('board').classList.remove('editing');
+  }
+  function buildEditBoard() {
+    const board = $('board');
+    const n = ed.n;
+    board.style.gridTemplateColumns = `repeat(${n}, minmax(0,1fr))`;
+    board.style.gridTemplateRows = `repeat(${n}, minmax(0,1fr))`;
+    board.className = 'board editing';
+    let html = '';
+    for (let i = 0; i < n * n; i++) html += `<button type="button" class="cell" data-i="${i}" aria-label="${t('cell', { r: ((i / n) | 0) + 1, c: i % n + 1 })}"></button>`;
+    board.innerHTML = html;
+    els = [...board.children];
+    paintEditBoard();
+  }
+  function paintEditBoard(mark = []) {
+    const n = ed.n, R = ed.regions, thick = n >= 9 ? '2.5px' : '3px';
+    const mk = new Set(mark);
+    els.forEach((el, i) => {
+      const r = (i / n) | 0, c = i % n, g = R[i];
+      const b = (rr, cc) => rr < 0 || cc < 0 || rr >= n || cc >= n || R[rr * n + cc] === g ? '0px' : thick;
+      el.style.cssText = `--rc:${g < 0 ? 'transparent' : `var(--r${g})`};--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}`;
+      el.classList.toggle('blank', g < 0);
+      el.classList.toggle('ht', mk.has(i));
+      el.dataset.l = g < 0 ? '' : LETTERS[g];
+    });
+  }
+  function renderPalette() {
+    $('palette').innerHTML = [...Array(ed.n).keys()].map(g => `<button type="button" class="swatch" data-g="${g}" style="--rc:var(--r${g})" aria-pressed="${brush === g}" aria-label="${colorName(g)}">${settings.cb ? LETTERS[g] : ''}</button>`).join('')
+      + `<button type="button" class="swatch eraser" data-g="-1" aria-pressed="${brush === -1}" aria-label="${t('wsEraser')}" title="${t('wsEraser')}"></button>`;
+  }
+  $('palette').addEventListener('click', e => {
+    const b = e.target.closest('[data-g]');
+    if (!b) return;
+    brush = +b.dataset.g;
+    renderPalette();
+  });
+  function componentsOk(n, R, g) {
+    const cells = []; for (let i = 0; i < n * n; i++) if (R[i] === g) cells.push(i);
+    if (!cells.length) return 'missing';
+    const seen = new Set([cells[0]]), stack = [cells[0]];
+    while (stack.length) {
+      const i = stack.pop(), r = (i / n) | 0, c = i % n;
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+        const j = rr * n + cc;
+        if (R[j] === g && !seen.has(j)) { seen.add(j); stack.push(j); }
+      }
+    }
+    return seen.size === cells.length ? 'ok' : 'split';
+  }
+  function validateEditor() {
+    const n = ed.n, R = ed.regions;
+    store.set('workshop', ed);
+    const checks = [];
+    const left = R.filter(g => g < 0).length;
+    checks.push([left === 0, left === 0 ? t('wsPainted') : t('wsLeft', { k: left })]);
+    const missing = [], split = [];
+    for (let g = 0; g < n; g++) { const st = componentsOk(n, R, g); if (st === 'missing') missing.push(colorName(g)); else if (st === 'split') split.push(colorName(g)); }
+    const regionsOk = !missing.length && !split.length;
+    checks.push([regionsOk, regionsOk ? t('wsRegions') : [missing.length ? t('wsMissing', { list: I.list(missing) }) : '', split.length ? t('wsSplit', { list: I.list(split) }) : ''].filter(Boolean).join(' · ')]);
+    let mark = [];
+    wsValid = false;
+    if (left === 0 && regionsOk) {
+      const sols = E.solve(n, R, 2);
+      if (sols.length === 0) checks.push([false, t('wsNone')]);
+      else if (sols.length > 1) {
+        checks.push([false, t('wsMany')]);
+        mark = sols[0].map((c, r) => r * n + c).concat(sols[1].map((c, r) => r * n + c)).filter((i, k, a) => sols[0][(i / n) | 0] !== sols[1][(i / n) | 0] && a.indexOf(i) === k);
+      } else {
+        checks.push([true, t('wsUnique')]);
+        const tier = LG.tierOf(LG.rate(n, R));
+        checks.push([true, tier < 0 ? t('wsGuess') : t('wsTier', { tier: t('tier' + tier) })]);
+        wsValid = true;
+        if (edTouched && !progress.flags?.created) award('created');
+      }
+    }
+    $('wsChecks').innerHTML = checks.map(([ok, txt]) => `<li class="${ok ? 'ok' : 'bad'}">${txt}</li>`).join('');
+    $('wsPlay').disabled = !wsValid;
+    $('wsCopy').disabled = !wsValid;
+    $('wsMsg').textContent = '';
+    paintEditBoard(mark);
+  }
+  let edDrag = false;
+  function editPaint(e) {
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.cell');
+    if (!el || !$('board').contains(el)) return;
+    const i = +el.dataset.i;
+    if (ed.regions[i] === brush) return;
+    ed.regions[i] = brush;
+    edTouched = true;
+    A.play(brush < 0 ? 'clear' : 'mark');
+    paintEditBoard();
+  }
+  function setEditSize(n) {
+    ed = { n, regions: new Array(n * n).fill(-1) };
+    if (brush >= n) brush = 0;
+    buildEditBoard(); renderPalette(); validateEditor(); renderModebar();
+  }
+  function randomEdit() {
+    const p = E.generate(ed.n, (Math.random() * 1e9) >>> 0);
+    if (!p) return;
+    ed = { n: ed.n, regions: p.regions.slice() };
+    paintEditBoard(); validateEditor();
+  }
+  function customLink() { return SITE + `#c-${ed.n}-${encodeRegions(ed.regions)}`; }
+  $('wsPlay').addEventListener('click', () => { if (wsValid) loadCustom(ed.n, ed.regions.slice()); });
+  $('wsCopy').addEventListener('click', async () => {
+    if (!wsValid) return;
+    try { await navigator.clipboard.writeText(customLink()); $('wsMsg').textContent = t('wsLinkCopied'); }
+    catch { $('wsMsg').textContent = customLink(); }
+  });
+
   // ---------- input ----------
   let drag = null;
   const canPlay = () => P && !won && !paused && $('loading').hidden;
@@ -274,6 +418,7 @@
 
   const board = $('board');
   board.addEventListener('pointerdown', e => {
+    if (editing) { e.preventDefault(); edDrag = true; editPaint(e); return; }
     if (won && $('win').hidden) { $('win').hidden = false; return; }
     const el = e.target.closest('.cell');
     if (!el || !canPlay()) return;
@@ -290,6 +435,7 @@
     update();
   });
   board.addEventListener('pointermove', e => {
+    if (editing) { if (edDrag) editPaint(e); return; }
     if (!drag || !batch) return;
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.cell');
     if (!el || !board.contains(el)) return;
@@ -300,20 +446,21 @@
     else if (drag.mode === EMPTY && cells[i] === MARK) setCell(i, EMPTY);
     update();
   });
-  const endDrag = () => { if (batch) commit(); };
+  const endDrag = () => { if (edDrag) { edDrag = false; validateEditor(); } if (batch) commit(); };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
   board.addEventListener('contextmenu', e => e.preventDefault());
   board.addEventListener('keydown', e => {
     const el = e.target.closest('.cell');
-    if (!el || !P) return;
-    const n = P.n, i = +el.dataset.i;
+    if (!el || (!P && !editing)) return;
+    const n = editing ? ed.n : P.n, i = +el.dataset.i;
     const moves = { ArrowUp: -n, ArrowDown: n, ArrowLeft: -1, ArrowRight: 1 };
     if (moves[e.key] != null) {
       const j = i + moves[e.key];
       if (j >= 0 && j < n * n && !(e.key === 'ArrowLeft' && i % n === 0) && !(e.key === 'ArrowRight' && i % n === n - 1)) els[j].focus();
       e.preventDefault(); e.stopPropagation();
     } else if (/^[xXcC ]$/.test(e.key) || e.key === 'Backspace' || e.key === 'Delete') {
+      if (editing) { if (e.key === ' ') { e.preventDefault(); ed.regions[i] = brush; validateEditor(); } return; }
       if (!canPlay()) return;
       e.preventDefault(); e.stopPropagation();
       batch = []; startClock();
@@ -324,6 +471,7 @@
   });
   board.addEventListener('click', e => {
     if (e.detail !== 0) return; // keyboard "Enter" only
+    if (editing) { const el = e.target.closest('.cell'); if (el) { ed.regions[+el.dataset.i] = brush; validateEditor(); } return; }
     const el = e.target.closest('.cell');
     if (!el || !canPlay()) return;
     const i = +el.dataset.i;
@@ -372,7 +520,7 @@
 
   // ---------- hints ----------
   const coachActive = () => P && !won && meta && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
-  const colorName = g => t('colors')[P && P.colors ? P.colors[g] : g];
+  const colorName = g => t('colors')[!editing && P && P.colors ? P.colors[g] : g];
   function unitName(u, cap) {
     if (u.kind === 'region') return t(cap ? 'Region' : 'region', { color: colorName(u.index) });
     return t((cap ? (u.kind === 'row' ? 'Row' : 'Col') : u.kind), { k: u.index + 1 });
@@ -483,7 +631,7 @@
     progress.solved++;
     progress.byTier[meta.tier] = (progress.byTier[meta.tier] || 0) + 1;
     const bk = `${P.n}-${meta.tier}`;
-    lastRecord = hintsUsed === 0 && (progress.best[bk] == null || elapsed < progress.best[bk]);
+    lastRecord = meta.kind !== 'custom' && hintsUsed === 0 && (progress.best[bk] == null || elapsed < progress.best[bk]);
     if (lastRecord) progress.best[bk] = Math.round(elapsed);
     if (meta.kind === 'level') progress.stars[meta.level] = Math.max(progress.stars[meta.level] || 0, stars);
     if (meta.kind === 'daily' && !progress.daily.done[meta.date]) {
@@ -526,6 +674,7 @@
     const next = $('winNext');
     if (meta.kind === 'level') { next.hidden = meta.level >= LEVELS.length; next.textContent = t('nextLevel'); }
     else if (meta.kind === 'daily') { next.hidden = false; next.textContent = t('playFree'); }
+    else if (meta.kind === 'custom') { next.hidden = false; next.textContent = t('wsEdit'); }
     else { next.hidden = false; next.textContent = t('next'); }
     if (celebrate) { A.play('win'); confetti(); }
     setTimeout(() => { if (won) $('win').hidden = false; }, celebrate ? 900 : 0);
@@ -544,11 +693,12 @@
   }
   $('win').addEventListener('click', e => { if (e.target === $('win')) $('win').hidden = true; });
   $('winNext').addEventListener('click', () => {
+    if (meta.kind === 'custom') { openEditor({ n: P.n, regions: P.regions }); return; }
     if (meta.kind === 'level') loadMode('journey', { level: meta.level + 1 });
     else loadMode('free', { fresh: true });
   });
   $('share').addEventListener('click', async () => {
-    const title = meta.kind === 'daily' ? t('shareDaily', { date: meta.date }) : meta.kind === 'level' ? t('shareLevel', { k: meta.level }) : t('shareFree', { id: `${P.n}-${meta.tier}-${free.seed}` });
+    const title = meta.kind === 'daily' ? t('shareDaily', { date: meta.date }) : meta.kind === 'level' ? t('shareLevel', { k: meta.level }) : meta.kind === 'custom' ? `${t('title')} · ${t('customName')}` : t('shareFree', { id: `${P.n}-${meta.tier}-${free.seed}` });
     const stars = meta.kind === 'level' ? '⭐'.repeat(lastStars) + ' · ' : '';
     const streak = meta.kind === 'daily' ? ` · 🔥${progress.daily.streak}` : '';
     const link = SITE + '#' + (meta.kind === 'daily' && meta.date === todayKey() ? 'daily' : meta.id);
@@ -581,7 +731,7 @@
   }
   function renderName() {
     if (!meta) return;
-    $('puzzleName').textContent = meta.kind === 'daily' ? t('dailyName', { date: meta.date }) : meta.kind === 'level' ? t('levelName', { k: meta.level, total: LEVELS.length }) : t('freeName', { id: `${P.n}-${meta.tier}-${free.seed}` });
+    $('puzzleName').textContent = meta.kind === 'daily' ? t('dailyName', { date: meta.date }) : meta.kind === 'level' ? t('levelName', { k: meta.level, total: LEVELS.length }) : meta.kind === 'custom' ? t('customName') : t('freeName', { id: `${P.n}-${meta.tier}-${free.seed}` });
     const b = $('tierBadge');
     b.className = 'badge t' + meta.tier;
     b.textContent = `${t('tier' + meta.tier)} · ${P.n}×${P.n}`;
@@ -599,6 +749,17 @@
         <span class="grow"></span>${isToday ? '' : `<button class="pill" id="dToday" type="button">${t('today')}</button>`}<button class="pill" id="dArchive" type="button"><svg class="ico"><use href="#i-cal"/></svg>${t('archive')}</button>`;
       $('dArchive').onclick = () => openArchive(key);
       if (!isToday) $('dToday').onclick = () => loadDaily();
+    } else if (mode === 'workshop') {
+      if (editing) {
+        mb.innerHTML = `<div class="seg" role="group" aria-label="${t('sizesLabel')}">${[5, 6, 7, 8, 9, 10].map(s => `<button type="button" data-n="${s}" aria-pressed="${ed.n === s}">${s}</button>`).join('')}</div>
+          <span class="grow"></span><button class="pill" id="wsRand" type="button">${t('wsRandom')}</button><button class="pill" id="wsClr" type="button">${t('wsClear')}</button>`;
+        mb.querySelectorAll('[data-n]').forEach(b => b.onclick = () => setEditSize(+b.dataset.n));
+        $('wsRand').onclick = randomEdit;
+        $('wsClr').onclick = () => setEditSize(ed.n);
+      } else {
+        mb.innerHTML = `<div class="dayInfo"><span>${t('wsFriend', { n: P ? P.n : 0 })}</span>${meta ? `<span class="badge t${meta.tier}">${t('tier' + meta.tier)}</span>` : ''}</div><span class="grow"></span><button class="pill" id="wsBack" type="button">${t('wsEdit')}</button>`;
+        $('wsBack').onclick = () => openEditor(P ? { n: P.n, regions: P.regions } : null);
+      }
     } else if (mode === 'journey') {
       const k = meta?.kind === 'level' ? meta.level : store.get('level', 1);
       const st = progress.stars[k] || 0;
@@ -783,19 +944,20 @@
     $('lang').setAttribute('aria-label', t('langSwitchLabel'));
     $('pause').textContent = t(paused ? 'resume' : 'pause');
     renderName(); renderModebar();
+    if (editing) { renderPalette(); validateEditor(); }
     if (won) { renderWinText(); showWinButtons(); }
     if (hint) { const h = computeHint(); if (h) { hint = h; $('hintText').textContent = h.text; } }
     if (P) update();
   }
   function showWinButtons() {
     const next = $('winNext');
-    next.textContent = meta.kind === 'level' ? t('nextLevel') : meta.kind === 'daily' ? t('playFree') : t('next');
+    next.textContent = meta.kind === 'level' ? t('nextLevel') : meta.kind === 'daily' ? t('playFree') : meta.kind === 'custom' ? t('wsEdit') : t('next');
   }
   $('lang').addEventListener('click', () => setLang(I.lang === 'ro' ? 'en' : 'ro'));
 
   // ---------- keyboard shortcuts ----------
   document.addEventListener('keydown', e => {
-    if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    if (editing || document.querySelector('dialog[open]') || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
     const k = e.key.toLowerCase();
     if (k === 'z' && (e.ctrlKey || e.metaKey || !e.altKey)) { e.preventDefault(); undo(); }
     else if (k === 'h' && !e.ctrlKey && !e.metaKey) { if (canPlay()) showHint(computeHint(), !coachActive()); }
@@ -813,11 +975,13 @@
     else if ((m = /^daily-(\d{4}-\d\d-\d\d)$/.exec(h))) loadMode('daily', { date: m[1] });
     else if ((m = /^level-(\d+)$/.exec(h)) && levelOpen(+m[1])) loadMode('journey', { level: +m[1] });
     else if ((m = /^f-(\d+)-(\d)-(\d+)$/.exec(h))) loadMode('free', { n: +m[1], tier: +m[2], seed: +m[3] });
+    else if ((m = /^c-(\d+)-(\d+)$/.exec(h)) && +m[1] >= 5 && +m[1] <= 10 && m[2].length === (+m[1]) ** 2 && [...m[2]].every(d => +d < +m[1])) loadMode('workshop', { custom: { n: +m[1], regions: [...m[2]].map(Number) } });
+    else if (h === 'workshop') loadMode('workshop');
     else if (fallback) loadMode(mode);
   }
   window.addEventListener('hashchange', () => {
     const h = location.hash.slice(1);
-    if (!meta || h === meta.id || (h === 'daily' && meta.kind === 'daily' && meta.date === todayKey())) return;
+    if ((h === 'workshop' && editing) || (meta && (h === meta.id || (h === 'daily' && meta.kind === 'daily' && meta.date === todayKey())))) return;
     route(h, false);
   });
   route(location.hash.slice(1), true);
