@@ -197,10 +197,15 @@
       const diff = (rr, cc) => rr < 0 || cc < 0 || rr >= n || cc >= n ? false : regions[rr * n + cc] !== g;
       const b = (rr, cc) => diff(rr, cc) ? thick : '0px';
       const tag = interactive ? 'button type="button" role="gridcell"' : 'div';
-      html += `<${tag} class="cell" data-i="${i}" data-l="${LETTERS[g]}" style="--rc:var(--r${p.colors ? p.colors[g] : g});--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}"></${interactive ? 'button' : 'div'}>`;
+      html += `<${tag} class="cell" data-i="${i}" data-l="${LETTERS[g]}" style="--d:${(r + c) * 22}ms;--rc:var(--r${p.colors ? p.colors[g] : g});--bt:${b(r - 1, c)};--bb:${b(r + 1, c)};--bl:${b(r, c - 1)};--br:${b(r, c + 1)}"></${interactive ? 'button' : 'div'}>`;
     }
     board.innerHTML = html;
-    if (interactive) els = [...board.children];
+    if (interactive) {
+      els = [...board.children];
+      board.classList.add('deal');
+      clearTimeout(buildBoard.t);
+      buildBoard.t = setTimeout(() => board.classList.remove('deal'), 450 + n * 2 * 22);
+    }
     return board;
   }
 
@@ -232,7 +237,7 @@
       const want = s === CAT ? 'cat' : s === MARK ? 'x' : blocked && blocked[i] ? 'auto' : '';
       if (el.dataset.v !== want) {
         el.dataset.v = want;
-        el.innerHTML = want === 'cat' ? '<svg class="c"><use href="#cat"/></svg>'
+        el.innerHTML = want === 'cat' ? `<svg class="c" style="--bd:-${(Math.random() * 3.6).toFixed(2)}s"><use href="#cat"/></svg>`
           : want === 'x' ? '<svg class="x"><use href="#ex"/></svg>'
           : want === 'auto' ? '<svg class="x auto"><use href="#ex"/></svg>' : '';
       }

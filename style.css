@@ -140,7 +140,10 @@ button:focus-visible,input:focus-visible+span,a:focus-visible{outline:3px solid 
 .cell svg{position:absolute;inset:10%;width:80%;height:80%;pointer-events:none}
 .cell .x{color:var(--line);opacity:.55;inset:30%;width:40%;height:40%}
 .cell .x.auto{opacity:.2}
-.cell .c{animation:pop .22s cubic-bezier(.3,1.6,.6,1);filter:drop-shadow(0 2px 0 rgba(0,0,0,.18))}
+.cell .c{animation:pop .22s cubic-bezier(.3,1.6,.6,1),snooze 3.6s ease-in-out var(--bd,0s) infinite;filter:drop-shadow(0 2px 0 rgba(0,0,0,.18));transform-origin:50% 85%}
+.board.deal .cell{animation:dealIn .42s cubic-bezier(.3,1.5,.6,1) backwards;animation-delay:var(--d)}
+@keyframes dealIn{from{transform:scale(.4) rotate(-8deg);opacity:0}}
+@keyframes snooze{0%,100%{transform:scale(1)}50%{transform:scale(1.045,1.03) translateY(-1.5%)}}
 .cell.bad{background-image:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--bad) 32%,transparent) 6px 12px)}
 .cell.bad .c{filter:drop-shadow(0 0 3px var(--bad)) drop-shadow(0 0 2px var(--bad))}
 .cell.blink{animation:blink .9s ease-in-out 3}
