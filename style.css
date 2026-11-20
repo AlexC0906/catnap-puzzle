@@ -263,6 +263,9 @@ summary{font:600 19px Fredoka,sans-serif;cursor:pointer;min-height:32px}
 .miniBoard{width:min(240px,70%);aspect-ratio:1;margin:8px auto;padding:6px;border-radius:14px;background:var(--line)}
 .miniBoard .board{border-radius:9px;touch-action:auto}
 .miniBoard .cell{cursor:default}
+.demoText{min-height:3.1em;margin:6px auto 4px;max-width:420px;text-align:center;font-weight:700;font-size:15px;line-height:1.4}
+.demoBtns{display:flex;justify-content:center}
+.miniBoard .cell .x{inset:28%;width:44%;height:44%}
 .setRow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px;font-weight:700}
 .toggle{display:flex;gap:12px;align-items:center;min-height:40px;cursor:pointer;font-weight:600}
 .toggle input{width:22px;height:22px;accent-color:var(--accent);flex:none}

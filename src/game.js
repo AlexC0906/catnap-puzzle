@@ -580,7 +580,8 @@
 
   // ---------- hints ----------
   const coachActive = () => P && !won && meta && meta.kind !== 'marathon' && (settings.coach || (meta.kind === 'level' && meta.level <= 2 && !progress.stars[meta.level]));
-  const colorName = g => t('colors')[!editing && P && P.colors ? P.colors[g] : g];
+  let nameColors = null; // set while describing a puzzle other than the current one
+  const colorName = g => t('colors')[nameColors ? nameColors[g] : !editing && P && P.colors ? P.colors[g] : g];
   function unitName(u, cap) {
     if (u.kind === 'region') return t(cap ? 'Region' : 'region', { color: colorName(u.index) });
     return t((cap ? (u.kind === 'row' ? 'Row' : 'Col') : u.kind), { k: u.index + 1 });
@@ -930,14 +931,70 @@
     $('levelGrid').querySelector('.cur')?.scrollIntoView({ block: 'center' });
   }
 
-  function openHelp() {
-    const L = LEVELS[0], regions = [...L.r].map(Number), sol = E.solve(L.n, regions, 1)[0];
+  let demoTok = 0;
+  const DEMO = { L: null, regions: null, colors: null, board: null };
+  function drawHelpBoard(solved) {
+    const L = LEVELS[0], regions = [...L.r].map(Number);
+    DEMO.L = L; DEMO.regions = regions; DEMO.colors = DEMO.colors || assignColors(L.n, regions);
     const host = $('helpBoard');
     host.innerHTML = '<div class="board"></div>';
-    const b = buildBoard(host.firstChild, { n: L.n, regions, colors: assignColors(L.n, regions) }, false);
-    [...b.children].forEach((el, i) => { if (sol[(i / L.n) | 0] === i % L.n) el.innerHTML = '<svg class="c"><use href="#cat"/></svg>'; });
+    DEMO.board = buildBoard(host.firstChild, { n: L.n, regions, colors: DEMO.colors }, false);
+    if (solved) {
+      const sol = E.solve(L.n, regions, 1)[0];
+      [...DEMO.board.children].forEach((el, i) => { if (sol[(i / L.n) | 0] === i % L.n) el.innerHTML = '<svg class="c"><use href="#cat"/></svg>'; });
+    }
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function runDemo() {
+    const tok = ++demoTok;
+    const live = () => tok === demoTok && $('dlgHelp').open;
+    drawHelpBoard(false);
+    const n = DEMO.L.n, cellsEl = [...DEMO.board.children];
+    const g = LG.makeGeometry(n, DEMO.regions), st = LG.newState(g);
+    $('demoText').textContent = t('demoStart');
+    $('demoBtn').disabled = true;
+    await sleep(1400);
+    for (let guard = 0; guard < 40 && live(); guard++) {
+      const step = LG.nextStep(g, st);
+      if (!step) break;
+      nameColors = DEMO.colors;
+      $('demoText').textContent = describe(step);
+      nameColors = null;
+      const focus = new Set(step.focus || []), targets = new Set(step.place != null ? [] : step.eliminate);
+      cellsEl.forEach((el, i) => { el.classList.toggle('hf', focus.has(i)); el.classList.toggle('ht', targets.has(i)); el.classList.toggle('hp', step.place === i); });
+      DEMO.board.classList.add('hinting');
+      await sleep(2300);
+      if (!live()) return;
+      const before = st.cand.slice();
+      LG.apply(g, st, step);
+      DEMO.board.classList.remove('hinting');
+      cellsEl.forEach(el => el.classList.remove('hf', 'ht', 'hp'));
+      if (step.place != null) {
+        cellsEl[step.place].innerHTML = '<svg class="c"><use href="#cat"/></svg>';
+        A.play('cat');
+        await sleep(500);
+        if (!live()) return;
+        $('demoText').textContent = t('demoPlaced');
+      }
+      cellsEl.forEach((el, i) => { if (before[i] && !st.cand[i] && !st.cat[i]) el.innerHTML = '<svg class="x"><use href="#ex"/></svg>'; });
+      await sleep(step.place != null ? 1500 : 700);
+    }
+    if (!live()) return;
+    $('demoText').textContent = t('demoDone');
+    A.play('chime', 4);
+    $('demoBtn').disabled = false;
+    $('demoBtn').textContent = t('demoAgain');
+  }
+  function openHelp() {
+    demoTok++;
+    drawHelpBoard(true);
+    $('demoText').textContent = '';
+    $('demoBtn').disabled = false;
+    $('demoBtn').textContent = t('demoPlay');
     openDlg('dlgHelp');
   }
+  $('demoBtn').addEventListener('click', runDemo);
+  $('dlgHelp').addEventListener('close', () => { demoTok++; });
   $('btnHelp').addEventListener('click', openHelp);
 
   function openStats() {

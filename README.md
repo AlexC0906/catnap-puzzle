@@ -34,8 +34,9 @@ Every puzzle has exactly one solution and can be solved with pure logic. You nev
 - **Coach mode**: explains every next step automatically, great for learning.
 - **Shareable image card**: after a win, get a PNG of your solved board with your cat, time and stars, ready for WhatsApp or Instagram.
 - **Calm lo-fi music**, generated live in the browser (optional), and a little chime when a cushion gets its cat.
-- **A mascot cat** peeks over the board: it follows your pointer, gets scared by conflicting cats, dozes off when you pause and celebrates when you win.
-- **22 achievements**, from *First nap* to *Night owl* and *Cheetah* (10×10 in under 5 minutes, no hints).
+- **A mascot cat you can pet** peeks over the board: stroke it and it purrs (synthesized), blushes and floats hearts; tap it for a meow and a true cat fact. It follows your pointer, hisses at conflicting cats, gives tips when you are stuck, dozes off when you pause and cheers when you win.
+- **Animated walkthrough** in *How to play*: watch a board solve itself step by step, with the reasoning for every move.
+- **24 achievements**, from *First nap* to *Night owl* and *Cheetah* (10×10 in under 5 minutes, no hints).
 - **8 cats to unlock** (Ginger, Tabby, Coal, Tuxedo, Calico, Siamese, Snow, Galaxy) with Journey stars and daily streaks.
 - Statistics: puzzles solved, streaks, best time for every size and difficulty.
 - Synthesized sound effects (Web Audio, no audio files), including a little meow.
