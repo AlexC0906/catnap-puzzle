@@ -1,62 +1,73 @@
-# 🐱 Mustăți
+# 🐱 Catnap
 
-Un puzzle logic cu pisici, care rulează direct în browser. Fără instalare, fără dependențe.
+A cozy logic puzzle with cats that runs right in your browser. No install, no dependencies.
+Available in **English** and **Romanian** (*Mustăți*). The language follows your browser, and you can switch it with one button.
 
-## Regulile
+**▶ Play: https://alexc0906.github.io/catnap-puzzle/**
 
-Tabla de N×N e împărțită în N perne colorate. Pune N pisici astfel încât:
+## Rules
 
-1. fiecare **rând** să aibă exact o pisică;
-2. fiecare **coloană** să aibă exact o pisică;
-3. fiecare **pernă colorată** să aibă exact o pisică;
-4. **nicio pisică să nu le atingă** pe celelalte, nici măcar pe diagonală.
+The N×N board is split into N colored cushions. Place N cats so that:
 
-Fiecare puzzle are o singură soluție.
+1. every **row** has exactly one cat;
+2. every **column** has exactly one cat;
+3. every **colored cushion** has exactly one cat;
+4. **no two cats touch**, not even diagonally.
 
-## Cum se joacă
+Every puzzle has exactly one solution, so you never need to guess.
 
-| Acțiune | Mouse / touch | Tastatură |
+## Controls
+
+| Action | Mouse / touch | Keyboard |
 |---|---|---|
-| Pune × | un clic | `X` |
-| Pune pisică | două clicuri (sau clic dreapta) | `C` |
-| Mai multe × deodată | trage peste celule | |
-| Mută-te pe tablă | | săgeți |
-| Anulează | butonul „Anulează” | `Ctrl+Z` |
+| Place × | one tap | `X` |
+| Place a cat | two taps (or right-click) | `C` |
+| Several × at once | drag across cells | |
+| Move around the board | | arrow keys |
+| Undo | “Undo” button | `Ctrl+Z` |
 
-## Ce are
+## Features
 
-- **Puzzle-ul zilei**: același 8×8 pentru toată lumea, în fiecare zi
-- Table de la **5×5 la 10×10**, generate la infinit
-- Fiecare puzzle are un link propriu (`#p8-4242`) pe care îl poți trimite cuiva
-- Greșelile se colorează imediat; opțional, × automate în jurul pisicilor
-- Indicii, cronometru, recorduri salvate local, progres salvat
-- Rezultat de copiat, cu emoji, ca la Wordle
-- Temă luminoasă și întunecată, merge pe telefon
+- **Daily puzzle**: the same 8×8 for everyone, every day
+- Boards from **5×5 to 10×10**, generated endlessly
+- Every puzzle has its own link (`#p8-4242`) you can send to a friend
+- Mistakes are highlighted instantly; optional auto-× around cats
+- Hints, timer, personal records and progress saved locally
+- Wordle-style emoji result to copy and share
+- Light and dark theme, works on phones
+- English / Romanian toggle
 
-## Rulează local
+## Run locally
 
-Deschide `index.html` în browser. Atât.
+Open `index.html` in a browser. That's it.
 
-## Teste
+## Tests
 
 ```bash
 npm test
 ```
 
-Testele verifică pentru fiecare mărime că puzzle-urile generate sunt valide, au zone conectate și **exact o soluție**.
+For every board size, the tests check that generated puzzles are valid, that every region is connected, and that each puzzle has **exactly one solution**.
 
-## Cum funcționează generatorul
+## How the generator works
 
-1. Așază aleator N pisici care respectă regulile (backtracking).
-2. Crește N zone colorate pornind din fiecare pisică (flood-fill aleator).
-3. Un solver numără soluțiile. Dacă găsește o a doua, mută o celulă dintre zone ca să o elimine și încearcă din nou.
+1. Randomly place N cats that follow the rules (backtracking).
+2. Grow N colored regions outward from each cat (random flood fill).
+3. A solver counts solutions. If it finds a second one, it moves one cell between regions to rule it out, then checks again.
 
-Totul e determinist pe baza unui seed, așa că același seed dă mereu același puzzle.
+Everything is seeded, so the same seed always produces the same puzzle. That's how the daily puzzle stays the same for everyone.
 
-## Publică pe GitHub Pages
+## Project structure
 
-Settings → Pages → Deploy from a branch → `main` / root. Jocul va fi la `https://<user>.github.io/mustati/`.
+```
+index.html       page markup
+style.css        all styles (light + dark theme)
+src/engine.js    RNG, solver, generator (works in browser and Node)
+src/game.js      game UI and input
+src/i18n.js      English + Romanian strings
+test/            Node tests for the engine
+```
 
-## Licență
+## License
 
 MIT
