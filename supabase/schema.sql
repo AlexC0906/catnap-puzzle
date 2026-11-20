@@ -7,7 +7,7 @@
 --   * Nobody can write to the tables directly. The only way in is the
 --     submit_score() function, which validates every submission:
 --       - board ids must look right (daily-YYYY-MM-DD close to today,
---         level-1..60, or marathon-YYYY-Www for this or last week)
+--         level-1..60, or marathon-YYYY-Www for this, last or next week)
 --       - for puzzles, the submitted cat positions must be a valid solution
 --         of that exact board (Journey boards are stored here; a daily
 --         board is fixed by its first valid submission)
@@ -107,8 +107,10 @@ begin
 
   -- Marathon: weekly high score
   if p_board ~ '^marathon-[0-9]{4}-W[0-9]{2}$' then
+    -- players are in different time zones: accept last week, this week and the week of tomorrow
     if p_board not in ('marathon-' || to_char(now(), 'IYYY-"W"IW'),
-                       'marathon-' || to_char(now() - interval '7 days', 'IYYY-"W"IW')) then
+                       'marathon-' || to_char(now() - interval '7 days', 'IYYY-"W"IW'),
+                       'marathon-' || to_char(now() + interval '1 day', 'IYYY-"W"IW')) then
       raise exception 'not this week';
     end if;
     if p_score is null or p_score < 1 or p_score > 40000 then raise exception 'implausible score'; end if;
