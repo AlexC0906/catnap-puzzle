@@ -30,6 +30,7 @@ Every puzzle has exactly one solution and can be solved with pure logic. You nev
 
 ## Features
 
+- **Online leaderboard**: today's daily puzzle, every Journey level and a weekly Marathon board. Only solves without hints count; every submission is validated by the database.
 - **Explained hints**: a hint doesn't just reveal a cell. It tells you *why*, e.g. “Every free spot in the yellow cushion is on row 3, so the rest of row 3 gets ×”, and highlights the cells involved.
 - **Coach mode**: explains every next step automatically, great for learning.
 - **Shareable image card**: after a win, get a PNG of your solved board with your cat, time and stars, ready for WhatsApp or Instagram.
@@ -93,8 +94,17 @@ src/music.js          procedural background music
 src/worker.js         background puzzle generation
 scripts/build-levels.js   regenerates src/levels.js
 sw.js, manifest.webmanifest   offline support / install
+src/leaderboard.js    online leaderboard client (Supabase REST)
+src/config.js         leaderboard project settings
+supabase/schema.sql   database tables, security rules, validating function
 test/                 Node tests
 ```
+
+## Online leaderboard
+
+Scores live in a free [Supabase](https://supabase.com) project. `src/config.js` holds the project URL and its publishable key, which are meant to be public: clients can only read a view of names and times, and can only write through `submit_score()`, a database function that checks every submission (the cat positions must solve that exact board, times and scores must be plausible, old boards are refused, at most 40 submissions per hour per player). Player ids stay private.
+
+To use your own project, run `supabase/schema.sql` in the Supabase SQL Editor and put your URL and key in `src/config.js`. Leave them empty to turn the leaderboard off.
 
 ## Development
 
