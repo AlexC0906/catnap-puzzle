@@ -134,7 +134,7 @@
     if (!P.colors) P.colors = assignColors(P.n, P.regions);
     const N = P.n * P.n;
     const saved = store.get('save:' + m.id, null);
-    cells = new Array(N).fill(EMPTY); history = []; batch = null;
+    cells = new Array(N).fill(EMPTY); history = []; redoStack = []; batch = null; prevBad = new Set();
     elapsed = 0; ticking = false; won = false; paused = false; hintsUsed = 0; hint = null;
     lastStars = 0; lastRecord = false;
     if (saved && saved.cells && saved.cells.length === N) {
@@ -145,6 +145,7 @@
     buildBoard($('board'), P, true);
     $('win').hidden = true; $('pauseOv').hidden = true;
     clearHint();
+    setMood(''); poke();
     renderName(); renderModebar();
     update();
     if (won) showWin(false);
@@ -219,6 +220,8 @@
     if (!P) return;
     const { n } = P;
     const { bad, count } = conflicts();
+    const newlyBad = [...bad].filter(i => !prevBad.has(i));
+    prevBad = bad;
     const blocked = settings.autoX ? blockedSet() : null;
     const hf = new Set(hint?.focus || []), ht = new Set(hint?.targets || []), hp = hint?.place;
     els.forEach((el, i) => {
@@ -237,6 +240,10 @@
       el.setAttribute('aria-label', t('cell', { r: ((i / n) | 0) + 1, c: i % n + 1 }) + (s === CAT ? t('cellCat') : s === MARK ? t('cellMark') : ''));
     });
     $('board').classList.toggle('hinting', !!hint && (hf.size > 0 || ht.size > 0 || hp != null));
+    if (newlyBad.length) {
+      newlyBad.forEach(i => { const c = els[i].querySelector('.c'); if (c) { c.classList.remove('hiss'); void c.getBBox; requestAnimationFrame(() => c.classList.add('hiss')); } });
+      setMood('scared', 1300);
+    }
     $('catCount').textContent = `${count}/${n}`;
     $('undo').disabled = !history.length || won;
     $('hint').disabled = won;
@@ -266,6 +273,7 @@
     const saved = store.get('workshop', null);
     ed = from ? { n: from.n, regions: from.regions.slice() } : saved && saved.regions && saved.regions.length === saved.n * saved.n ? saved : { n: 7, regions: new Array(49).fill(-1) };
     editing = true; P = null; meta = null; hint = null;
+    setMood('');
     ticking = false; won = false; paused = false;
     $('win').hidden = true; $('pauseOv').hidden = true; $('hintBox').hidden = true;
     document.querySelector('.side').classList.add('editing');
@@ -393,17 +401,18 @@
   });
 
   // ---------- input ----------
-  let drag = null;
+  let drag = null, prevBad = new Set();
   const canPlay = () => P && !won && !paused && $('loading').hidden;
+  let redoStack = [];
   function setCell(i, v) {
     if (cells[i] === v) return;
-    batch.push({ i, prev: cells[i] });
+    batch.push({ i, prev: cells[i], next: v });
     cells[i] = v;
   }
   function startClock() { if (!ticking && !won && !paused) { ticking = true; startTime = performance.now(); } }
   function commit() {
     const changed = batch && batch.length;
-    if (changed) history.push(batch);
+    if (changed) { history.push(batch); redoStack = []; }
     batch = null; drag = null;
     if (changed && hint) { clearHint(); if (coachActive()) setTimeout(() => !won && showHint(computeHint(), false), 60); }
     update();
@@ -485,7 +494,17 @@
     if (won || paused || !history.length) return;
     const b = history.pop();
     for (let k = b.length - 1; k >= 0; k--) cells[b[k].i] = b[k].prev;
+    redoStack.push(b);
     A.play('clear');
+    clearHint();
+    update();
+  }
+  function redo() {
+    if (won || paused || !redoStack.length) return;
+    const b = redoStack.pop();
+    for (const c of b) cells[c.i] = c.next;
+    history.push(b);
+    A.play('mark');
     clearHint();
     update();
   }
@@ -512,6 +531,7 @@
     else if (!on && paused) { paused = false; if (elapsed > 0) startClock(); }
     $('pauseOv').hidden = !paused;
     $('pause').textContent = t(paused ? 'resume' : 'pause');
+    setMood(baseMood());
     save();
   }
   $('pause').addEventListener('click', () => togglePause());
@@ -583,11 +603,14 @@
     $('hintText').textContent = h.text;
     $('hintBox').hidden = false;
     $('hintApply').hidden = !h.fix.length;
+    setMood('think');
+    mascot.querySelector('.pupils').style.transform = 'translate(3px,1px)';
     if (h.kind === 'wrongCat' || h.kind === 'wrongMark') h.targets.forEach(i => { const el = els[i]; el.classList.remove('blink'); void el.offsetWidth; el.classList.add('blink'); });
     update();
   }
   function clearHint() {
     hint = null;
+    if (mood === 'think') setMood(baseMood());
     $('hintBox').hidden = true;
     if (P) $('board').classList.remove('hinting');
   }
@@ -666,6 +689,7 @@
   }
   function showWin(celebrate) {
     $('board').classList.add('won');
+    setMood('happy');
     ['undo', 'hint', 'pause'].forEach(id => { $(id).disabled = true; });
     els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
     renderWinText();
@@ -959,11 +983,42 @@
   document.addEventListener('keydown', e => {
     if (editing || document.querySelector('dialog[open]') || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
     const k = e.key.toLowerCase();
-    if (k === 'z' && (e.ctrlKey || e.metaKey || !e.altKey)) { e.preventDefault(); undo(); }
+    if ((k === 'z' && e.shiftKey) || (k === 'y' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); redo(); }
+    else if (k === 'z' && !e.altKey) { e.preventDefault(); undo(); }
     else if (k === 'h' && !e.ctrlKey && !e.metaKey) { if (canPlay()) showHint(computeHint(), !coachActive()); }
     else if (k === 'p' && !e.ctrlKey && !e.metaKey) togglePause();
     else if (k === 'escape' && hint) { clearHint(); update(); }
   });
+
+  // ---------- mascot ----------
+  const mascot = $('mascot');
+  let moodTimer = null, idleTimer = null, mood = '', eyeRaf = 0;
+  function baseMood() { return won ? 'happy' : paused ? 'sleep' : hint ? 'think' : ''; }
+  function setMood(m, ms) {
+    clearTimeout(moodTimer);
+    mascot.classList.remove('happy', 'sleep', 'scared', 'think');
+    if (m) mascot.classList.add(m);
+    mood = m;
+    if (ms) moodTimer = setTimeout(() => setMood(baseMood()), ms);
+  }
+  function poke() {
+    clearTimeout(idleTimer);
+    if (mood === 'sleep' && !paused) setMood(baseMood());
+    idleTimer = setTimeout(() => { if (P && !won && !editing && !hint) setMood('sleep'); }, 25000);
+  }
+  document.addEventListener('pointermove', e => {
+    poke();
+    if (eyeRaf || mood === 'think') return;
+    eyeRaf = requestAnimationFrame(() => {
+      eyeRaf = 0;
+      const r = mascot.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height * 0.7);
+      const d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 160) * 3.2;
+      mascot.querySelector('.pupils').style.transform = `translate(${(dx / d) * k}px,${(dy / d) * k}px)`;
+    });
+  }, { passive: true });
+  document.addEventListener('keydown', poke);
+  document.addEventListener('pointerdown', poke);
 
   // ---------- boot ----------
   if (ACH.check(progress, null).length) saveProgress();
