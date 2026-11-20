@@ -133,6 +133,7 @@
     const saved = store.get('save:' + m.id, null);
     cells = new Array(N).fill(EMPTY); history = []; batch = null;
     elapsed = 0; ticking = false; won = false; paused = false; hintsUsed = 0; hint = null;
+    lastStars = 0; lastRecord = false;
     if (saved && saved.cells && saved.cells.length === N) {
       cells = saved.cells; elapsed = saved.elapsed || 0; hintsUsed = saved.hints || 0; won = !!saved.won;
       lastStars = saved.stars || 0;
