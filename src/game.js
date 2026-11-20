@@ -1,6 +1,8 @@
 // Mustăți — game UI
 {
   const E = window.MustatiEngine;
+  const L = window.MustatiI18n;
+  const t = L.t;
   const $ = id => document.getElementById(id);
   const EMPTY = 0, MARK = 1, CAT = 2;
   const SIZES = [5, 6, 7, 8, 9, 10];
@@ -45,7 +47,7 @@
     try { window.history.replaceState(null, '', daily ? '#zilnic' : `#p${n}-${seed}`); } catch { /* sandboxed */ }
     buildBoard();
     renderModes();
-    $('puzzleName').textContent = daily ? `Puzzle-ul zilei · ${todayKey()} · ${n}×${n}` : `Puzzle #${n}-${seed}`;
+    renderName();
     $('hintMsg').textContent = '';
     $('win').hidden = true;
     if (won) showWin(false);
@@ -73,7 +75,7 @@
       const diff = (rr, cc) => rr < 0 || cc < 0 || rr >= n || cc >= n ? false : regions[rr * n + cc] !== g;
       const bt = diff(r - 1, c) ? thick : '0px', bb = diff(r + 1, c) ? thick : '0px';
       const bl = diff(r, c - 1) ? thick : '0px', br = diff(r, c + 1) ? thick : '0px';
-      html += `<button class="cell" type="button" role="gridcell" data-i="${i}" aria-label="Rândul ${r + 1}, coloana ${c + 1}" style="--rc:var(--r${g});--bt:${bt};--bb:${bb};--bl:${bl};--br:${br}"></button>`;
+      html += `<button class="cell" type="button" role="gridcell" data-i="${i}" aria-label="${t('cell', { r: r + 1, c: c + 1 })}" style="--rc:var(--r${g});--bt:${bt};--bb:${bb};--bl:${bl};--br:${br}"></button>`;
     }
     board.innerHTML = html;
     els = [...board.children];
@@ -121,7 +123,7 @@
           : want === 'auto' ? `<svg class="x auto"><use href="#ex"/></svg>` : '';
       }
       el.classList.toggle('bad', settings.showErr && bad.has(i));
-      el.setAttribute('aria-label', `Rândul ${((i / n) | 0) + 1}, coloana ${i % n + 1}${s === CAT ? ', pisică' : s === MARK ? ', marcat' : ''}`);
+      el.setAttribute('aria-label', t('cell', { r: ((i / n) | 0) + 1, c: i % n + 1 }) + (s === CAT ? t('cellCat') : s === MARK ? t('cellMark') : ''));
     });
     $('catCount').textContent = `${count}/${n}`;
     $('undo').disabled = !history.length || won;
@@ -224,7 +226,7 @@
     for (let i = 0; i < n * n; i++) {
       if (cells[i] === CAT && solution[(i / n) | 0] !== i % n) {
         flash(i); hintsUsed++;
-        $('hintMsg').textContent = 'Pisica care clipește nu stă unde trebuie.';
+        $('hintMsg').textContent = t('hintWrongCat');
         return update();
       }
     }
@@ -233,7 +235,7 @@
       const i = r * n + solution[r];
       if (cells[i] === MARK) {
         flash(i); hintsUsed++;
-        $('hintMsg').textContent = 'Ai pus × pe un loc unde de fapt doarme o pisică.';
+        $('hintMsg').textContent = t('hintWrongMark');
         return update();
       }
     }
@@ -245,7 +247,7 @@
     if (!rows.length) return;
     const i = rows[0] * n + solution[rows[0]];
     batch = []; startClock(); setCell(i, CAT); hintsUsed++;
-    $('hintMsg').textContent = 'Am pus o pisică pentru tine.';
+    $('hintMsg').textContent = t('hintPlaced');
     endDrag(); flash(i);
   });
   function flash(i) {
@@ -293,10 +295,11 @@
   function showWin(isRecord) {
     $('board').classList.add('won');
     els.forEach((el, i) => el.style.setProperty('--i', String(i % P.n + ((i / P.n) | 0))));
-    const t = fmt(elapsed);
-    $('winText').textContent = `${P.n}×${P.n} în ${t}` + (hintsUsed ? ` cu ${hintsUsed} ${hintsUsed === 1 ? 'indiciu' : 'indicii'}.` : ', fără indicii.') + (isRecord ? ' Record nou!' : '');
+    const time = fmt(elapsed);
+    lastRecord = isRecord;
+    renderWinText();
     $('shareMsg').textContent = '';
-    $('timer').textContent = t;
+    $('timer').textContent = time;
     setTimeout(() => { if (won) $('win').hidden = false; }, 900);
   }
   $('share').addEventListener('click', async () => {
@@ -306,10 +309,10 @@
       for (let c = 0; c < n; c++) grid += solution[r] === c ? '🐱' : REGION_EMOJI[regions[r * n + c] % REGION_EMOJI.length];
       grid += '\n';
     }
-    const title = isDaily ? `Mustăți · puzzle-ul zilei ${todayKey()}` : `Mustăți · #${n}-${P.seed}`;
+    const title = isDaily ? t('shareDaily', { date: todayKey() }) : t('shareOne', { n, seed: P.seed });
     const text = `${title}\n⏱ ${fmt(elapsed)}${hintsUsed ? ` · 💡${hintsUsed}` : ''}\n${grid}`;
-    try { await navigator.clipboard.writeText(text); $('shareMsg').textContent = 'Copiat! Lipește-l unde vrei.'; }
-    catch { $('shareMsg').textContent = 'Nu am putut copia automat.'; }
+    try { await navigator.clipboard.writeText(text); $('shareMsg').textContent = t('copied'); }
+    catch { $('shareMsg').textContent = t('copyFail'); }
   });
 
   function renderRecords() {
@@ -319,6 +322,32 @@
       return `<tr><td>${s}×${s}</td><td>${r && r.best != null ? fmt(r.best) : '—'}</td><td>${r ? r.solved : 0}</td></tr>`;
     }).join('');
   }
+
+  // ---------- language ----------
+  let lastRecord = false;
+  function renderName() {
+    if (!P) return;
+    $('puzzleName').textContent = isDaily ? t('dailyName', { date: todayKey(), n: P.n }) : t('puzzleName', { n: P.n, seed: P.seed });
+  }
+  function renderWinText() {
+    if (!P) return;
+    const k = hintsUsed;
+    $('winText').textContent = t('winIn', { n: P.n, t: fmt(elapsed) }) + (k === 0 ? t('winNoHints') : k === 1 ? t('winHints1') : t('winHintsN', { k })) + (lastRecord ? t('winRecord') : '');
+  }
+  function setLang(v) {
+    L.lang = v;
+    store.set('lang', v);
+    L.apply(document);
+    $('lang').textContent = t('langSwitch');
+    $('lang').setAttribute('aria-label', t('langSwitchLabel'));
+    renderName();
+    if (won) renderWinText();
+    $('hintMsg').textContent = '';
+    $('shareMsg').textContent = '';
+    if (P) { els.forEach(el => { el.dataset.v = '_'; }); update(); }
+  }
+  $('lang').addEventListener('click', () => setLang(L.lang === 'ro' ? 'en' : 'ro'));
+  setLang(L.detect(store.get('lang', null)));
 
   // ---------- boot ----------
   renderRecords();

@@ -33,72 +33,74 @@
   <div class="brand">
     <svg class="logo" aria-hidden="true"><use href="#cat"/></svg>
     <div>
-      <h1>Mustăți</h1>
-      <p class="tag">Câte o pisică pe fiecare rând, coloană și pernă colorată. Și nicio pisică nu stă lipită de alta.</p>
+      <h1 data-i18n="title">Mustăți</h1>
+      <p class="tag" data-i18n="tagline">Câte o pisică pe fiecare rând, coloană și pernă colorată. Și nicio pisică nu stă lipită de alta.</p>
     </div>
   </div>
-  <nav class="modes" aria-label="Alege puzzle-ul">
-    <button class="mode" id="daily" type="button">Puzzle-ul zilei</button>
-    <div class="sizes" role="group" aria-label="Mărimea tablei" id="sizes"></div>
-    <button class="mode ghost" id="newGame" type="button">Puzzle nou</button>
+  <nav class="modes" aria-label="Alege puzzle-ul" data-i18n-label="modesLabel">
+    <button class="mode" id="daily" type="button" data-i18n="daily">Puzzle-ul zilei</button>
+    <div class="sizes" role="group" aria-label="Mărimea tablei" data-i18n-label="sizesLabel" id="sizes"></div>
+    <button class="lang" id="lang" type="button" aria-label="Switch to English">EN</button>
+    <button class="mode ghost" id="newGame" type="button" data-i18n="newGame">Puzzle nou</button>
   </nav>
 </header>
 
 <main class="play">
-  <section class="boardWrap" aria-label="Tabla de joc">
+  <section class="boardWrap" aria-label="Tabla de joc" data-i18n-label="boardLabel">
     <div class="boardFrame">
       <div id="board" class="board" role="grid"></div>
       <div id="win" class="win" hidden>
         <div class="winCard">
           <svg class="winCat" aria-hidden="true"><use href="#cat"/></svg>
-          <h2>Miau! Ai rezolvat.</h2>
+          <h2 data-i18n="winTitle">Miau! Ai rezolvat.</h2>
           <p id="winText"></p>
           <div class="winBtns">
-            <button id="share" type="button" class="primary">Copiază rezultatul</button>
-            <button id="winNext" type="button">Încă unul</button>
+            <button id="share" type="button" class="primary" data-i18n="share">Copiază rezultatul</button>
+            <button id="winNext" type="button" data-i18n="next">Încă unul</button>
           </div>
           <p id="shareMsg" class="small" aria-live="polite"></p>
         </div>
       </div>
     </div>
-    <p class="howto small">Apasă o dată pentru <b>×</b>, de două ori pentru o pisică. Trage cu degetul ca să pui mai multe <b>×</b> deodată.</p>
+    <p class="howto small" data-i18n-html="howto">Apasă o dată pentru <b>×</b>, de două ori pentru o pisică. Trage cu degetul ca să pui mai multe <b>×</b> deodată.</p>
   </section>
 
   <aside class="side">
     <div class="stats">
-      <div><span class="label">Timp</span><span id="timer" class="big">0:00</span></div>
-      <div><span class="label">Pisici</span><span id="catCount" class="big">0/8</span></div>
+      <div><span class="label" data-i18n="time">Timp</span><span id="timer" class="big">0:00</span></div>
+      <div><span class="label" data-i18n="cats">Pisici</span><span id="catCount" class="big">0/8</span></div>
     </div>
     <p id="puzzleName" class="small puzzleName"></p>
     <div class="controls">
-      <button id="undo" type="button">Anulează</button>
-      <button id="hint" type="button">Indiciu</button>
-      <button id="reset" type="button">De la capăt</button>
+      <button id="undo" type="button" data-i18n="undo">Anulează</button>
+      <button id="hint" type="button" data-i18n="hint">Indiciu</button>
+      <button id="reset" type="button" data-i18n="reset">De la capăt</button>
     </div>
-    <label class="toggle"><input type="checkbox" id="autoX"> <span>Pune × automat lângă pisici</span></label>
-    <label class="toggle"><input type="checkbox" id="showErr" checked> <span>Arată greșelile</span></label>
+    <label class="toggle"><input type="checkbox" id="autoX"> <span data-i18n="autoX">Pune × automat lângă pisici</span></label>
+    <label class="toggle"><input type="checkbox" id="showErr" checked> <span data-i18n="showErr">Arată greșelile</span></label>
     <p id="hintMsg" class="small hintMsg" aria-live="polite"></p>
 
     <details class="rules" open>
-      <summary>Regulile</summary>
+      <summary data-i18n="rules">Regulile</summary>
       <ol>
-        <li>Fiecare rând are exact o pisică.</li>
-        <li>Fiecare coloană are exact o pisică.</li>
-        <li>Fiecare pernă colorată are exact o pisică.</li>
-        <li>Pisicile nu se ating, nici măcar pe diagonală.</li>
+        <li data-i18n="rule1">Fiecare rând are exact o pisică.</li>
+        <li data-i18n="rule2">Fiecare coloană are exact o pisică.</li>
+        <li data-i18n="rule3">Fiecare pernă colorată are exact o pisică.</li>
+        <li data-i18n="rule4">Pisicile nu se ating, nici măcar pe diagonală.</li>
       </ol>
-      <p class="small">Fiecare puzzle are o singură soluție, deci nu trebuie să ghicești.</p>
+      <p class="small" data-i18n="rulesNote">Fiecare puzzle are o singură soluție, deci nu trebuie să ghicești.</p>
     </details>
 
     <details class="records">
-      <summary>Recordurile tale</summary>
-      <table id="recTable"><thead><tr><th>Tablă</th><th>Cel mai bun timp</th><th>Rezolvate</th></tr></thead><tbody></tbody></table>
+      <summary data-i18n="records">Recordurile tale</summary>
+      <table id="recTable"><thead><tr><th data-i18n="recBoard">Tablă</th><th data-i18n="recBest">Cel mai bun timp</th><th data-i18n="recSolved">Rezolvate</th></tr></thead><tbody></tbody></table>
     </details>
   </aside>
 </main>
 
-<footer class="foot small">Făcut cu Claude · cod sursă liber (MIT)</footer>
+<footer class="foot small" data-i18n="footer">Făcut cu Claude · cod sursă liber (MIT)</footer>
 
+<script src="src/i18n.js"></script>
 <script src="src/engine.js"></script>
 <script src="src/game.js"></script>
 </body>

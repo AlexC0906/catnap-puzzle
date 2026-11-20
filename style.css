@@ -54,6 +54,7 @@ h1{font:700 clamp(36px,5vw,50px)/1.05 Fredoka,Nunito,sans-serif;margin:0;letter-
 .mode,.controls button,.winBtns button{min-height:44px;padding:0 18px;border-radius:999px;border:2px solid var(--line);background:var(--card);font-weight:800;cursor:pointer;box-shadow:0 3px 0 var(--line);transition:transform .08s}
 .mode[aria-pressed=true]{background:var(--accent);color:#fff}
 .mode.ghost{background:transparent}
+.lang{min-width:44px;min-height:44px;border-radius:999px;border:2px solid var(--line);background:var(--ink);color:var(--bg);font-weight:800;cursor:pointer;box-shadow:0 3px 0 var(--line)}
 button:active{transform:translateY(2px);box-shadow:0 1px 0 var(--line)}
 button:focus-visible,input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
 
@@ -123,6 +124,7 @@ td:not(:first-child),th:not(:first-child){text-align:right;font-variant-numeric:
   .sizes{order:3;width:100%;justify-content:space-between}
   .sizes button{flex:1}
   .mode{flex:1}
+  .lang{flex:none}
   .boardFrame{padding:6px;border-radius:16px}
   .board{border-radius:11px}
   .win{padding:8px}
