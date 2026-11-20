@@ -43,14 +43,15 @@
   let P = null, meta = null, geom = null;
   let cells = [], history = [], batch = null, els = [];
   let startTime = 0, elapsed = 0, ticking = false, won = false, paused = false, hintsUsed = 0;
-  let hint = null, lastStars = 0, lastRecord = false, loadToken = 0;
+  let hint = null, lastStars = 0, lastRecord = false, loadToken = 0, dailyDate = null, pausedByDialog = false;
 
   // ---------- dates ----------
   const pad = x => String(x).padStart(2, '0');
   const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const todayKey = () => dateKey(new Date());
   const yesterdayKey = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dateKey(d); };
-  const longDate = () => { try { return new Intl.DateTimeFormat(I.lang === 'ro' ? 'ro-RO' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()); } catch { return todayKey(); } };
+  const locale = () => (I.lang === 'ro' ? 'ro-RO' : 'en-US');
+  const longDate = (key = todayKey()) => { try { return new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(parseKey(key)); } catch { return key; } };
 
   // ---------- generation (worker when possible) ----------
   let worker = null;
@@ -76,10 +77,13 @@
 
   // ---------- loading puzzles ----------
   function showLoading(on) { $('loading').hidden = !on; }
-  async function loadDaily() {
+  const parseKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+  const dailyPlan = key => DAILY[parseKey(key).getDay()];
+  async function loadDaily(key = todayKey()) {
     const tok = ++loadToken;
-    const key = todayKey();
-    const [n, tier] = DAILY[new Date().getDay()];
+    if (key > todayKey()) key = todayKey();
+    dailyDate = key;
+    const [n, tier] = dailyPlan(key);
     const delay = setTimeout(() => showLoading(true), 120);
     const p = await generate(n, tier, E.hashString('catnap-daily-' + key));
     clearTimeout(delay); showLoading(false);
@@ -110,7 +114,7 @@
   function loadMode(m, opts = {}) {
     mode = m; store.set('mode', m);
     renderTabs();
-    if (m === 'daily') loadDaily();
+    if (m === 'daily') loadDaily(opts.date);
     else if (m === 'journey') loadLevel(opts.level ?? store.get('level', firstOpenLevel()));
     else loadFree(opts.n ?? free.n, opts.tier ?? free.tier, opts.seed ?? (opts.fresh ? undefined : free.seed));
     renderModebar();
@@ -132,7 +136,7 @@
       cells = saved.cells; elapsed = saved.elapsed || 0; hintsUsed = saved.hints || 0; won = !!saved.won;
       lastStars = saved.stars || 0;
     }
-    try { window.history.replaceState(null, '', '#' + (m.kind === 'daily' ? 'daily' : m.id)); } catch { /* sandboxed */ }
+    try { window.history.replaceState(null, '', '#' + (m.kind === 'daily' ? (m.date === todayKey() ? 'daily' : m.id) : m.id)); } catch { /* sandboxed */ }
     buildBoard($('board'), P, true);
     $('win').hidden = true; $('pauseOv').hidden = true;
     clearHint();
@@ -228,7 +232,9 @@
     if (changed && hint) { clearHint(); if (coachActive()) setTimeout(() => !won && showHint(computeHint(), false), 60); }
     update();
   }
+  const buzz = ms => { try { if (settings.sound && navigator.vibrate) navigator.vibrate(ms); } catch { /* unsupported */ } };
   function soundFor(v, i) {
+    if (v === CAT) buzz(10);
     if (v === CAT) A.play(geom.attacks[i].some(j => cells[j] === CAT) ? 'error' : 'cat');
     else if (v === MARK) A.play('mark');
     else A.play('clear');
@@ -236,6 +242,7 @@
 
   const board = $('board');
   board.addEventListener('pointerdown', e => {
+    if (won && $('win').hidden) { $('win').hidden = false; return; }
     const el = e.target.closest('.cell');
     if (!el || !canPlay()) return;
     e.preventDefault();
@@ -442,6 +449,9 @@
     if (meta.kind === 'daily' && !progress.daily.done[meta.date]) {
       const d = progress.daily;
       d.done[meta.date] = true;
+    }
+    if (meta.kind === 'daily' && meta.date === todayKey() && progress.daily.last !== meta.date) {
+      const d = progress.daily;
       d.streak = d.last === yesterdayKey() ? d.streak + 1 : d.last === meta.date ? d.streak : 1;
       d.last = meta.date;
       d.best = Math.max(d.best, d.streak);
@@ -471,10 +481,11 @@
     $('winText').textContent = t('winIn', { size: `${P.n}×${P.n}`, tier: t('tier' + meta.tier), t: fmt(elapsed) }) + '. ' + (k === 0 ? t('winNoHints') : k === 1 ? t('winHints1') : t('winHintsN', { k }));
     const extra = [];
     if (lastRecord) extra.push(t('winRecord'));
-    if (meta.kind === 'daily') { const s = progress.daily.streak; extra.push(t('streakLine', { k: s, k1: s === 1 ? t('day1') : t('dayN') })); }
+    if (meta.kind === 'daily' && meta.date === todayKey()) { const s = progress.daily.streak; extra.push(t('streakLine', { k: s, k1: s === 1 ? t('day1') : t('dayN') })); }
     $('winExtra').textContent = extra.join(' · ');
     $('winStars').innerHTML = meta.kind === 'level' ? [1, 2, 3].map(s => `<svg class="${s <= lastStars ? 'on' : ''}"><use href="#i-star"/></svg>`).join('') : '';
   }
+  $('win').addEventListener('click', e => { if (e.target === $('win')) $('win').hidden = true; });
   $('winNext').addEventListener('click', () => {
     if (meta.kind === 'level') loadMode('journey', { level: meta.level + 1 });
     else loadMode('free', { fresh: true });
@@ -483,7 +494,7 @@
     const title = meta.kind === 'daily' ? t('shareDaily', { date: meta.date }) : meta.kind === 'level' ? t('shareLevel', { k: meta.level }) : t('shareFree', { id: `${P.n}-${meta.tier}-${free.seed}` });
     const stars = meta.kind === 'level' ? '⭐'.repeat(lastStars) + ' · ' : '';
     const streak = meta.kind === 'daily' ? ` · 🔥${progress.daily.streak}` : '';
-    const link = SITE + '#' + (meta.kind === 'daily' ? 'daily' : meta.id);
+    const link = SITE + '#' + (meta.kind === 'daily' && meta.date === todayKey() ? 'daily' : meta.id);
     const text = `${title}\n${stars}${P.n}×${P.n} ${t('tier' + meta.tier)} · ⏱ ${fmt(elapsed)} · 💡${hintsUsed}${streak}\n${'🐱'.repeat(P.n)}\n${link}`;
     try { await navigator.clipboard.writeText(text); $('shareMsg').textContent = t('copied'); }
     catch { $('shareMsg').textContent = t('copyFail'); }
@@ -522,10 +533,15 @@
   function renderModebar() {
     const mb = $('modebar');
     if (mode === 'daily') {
-      const [n, tier] = DAILY[new Date().getDay()];
+      const key = dailyDate || todayKey();
+      const [n, tier] = dailyPlan(key);
       const d = progress.daily;
       const streak = d.last === todayKey() || d.last === yesterdayKey() ? d.streak : 0;
-      mb.innerHTML = `<div class="dayInfo"><span>${longDate()}</span><span class="badge t${tier}">${t('tier' + tier)} · ${n}×${n}</span>${streak ? `<span class="streak" title="${t('statsStreak')}"><svg><use href="#i-flame"/></svg>${streak}</span>` : ''}${d.done[todayKey()] ? '<span class="streak">✓</span>' : ''}</div>`;
+      const isToday = key === todayKey();
+      mb.innerHTML = `<div class="dayInfo"><span>${longDate(key)}</span><span class="badge t${tier}">${t('tier' + tier)} · ${n}×${n}</span>${streak ? `<span class="streak" title="${t('statsStreak')}"><svg><use href="#i-flame"/></svg>${streak}</span>` : ''}${d.done[key] ? '<span class="streak">✓</span>' : ''}</div>
+        <span class="grow"></span>${isToday ? '' : `<button class="pill" id="dToday" type="button">${t('today')}</button>`}<button class="pill" id="dArchive" type="button"><svg class="ico"><use href="#i-cal"/></svg>${t('archive')}</button>`;
+      $('dArchive').onclick = () => openArchive(key);
+      if (!isToday) $('dToday').onclick = () => loadDaily();
     } else if (mode === 'journey') {
       const k = meta?.kind === 'level' ? meta.level : store.get('level', 1);
       const st = progress.stars[k] || 0;
@@ -550,12 +566,57 @@
   // ---------- dialogs ----------
   function openDlg(id) {
     const d = $(id);
-    if (paused === false && ticking) togglePause(true);
+    if (!paused && ticking) { togglePause(true); pausedByDialog = true; }
     try { d.showModal(); } catch { d.setAttribute('open', ''); }
   }
   document.querySelectorAll('dialog').forEach(d => {
     d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
-    d.addEventListener('close', () => { if (d.id === 'dlgHelp') store.set('seenHelp', true); });
+    d.addEventListener('close', () => {
+      if (d.id === 'dlgHelp') store.set('seenHelp', true);
+      if (pausedByDialog && !document.querySelector('dialog[open]')) { pausedByDialog = false; if (paused) togglePause(false); }
+    });
+  });
+
+  // ---------- daily archive ----------
+  let archMonth = null;
+  function openArchive(key) {
+    const d = parseKey(key || todayKey());
+    archMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    renderArchive();
+    openDlg('dlgArchive');
+  }
+  function renderArchive() {
+    const y = archMonth.getFullYear(), mo = archMonth.getMonth();
+    const today = todayKey();
+    const first = new Date(y, mo, 1), days = new Date(y, mo + 1, 0).getDate();
+    const offset = (first.getDay() + 6) % 7; // Monday first
+    let wd = '';
+    try { const f = new Intl.DateTimeFormat(locale(), { weekday: 'narrow' }); for (let k = 0; k < 7; k++) wd += `<span class="wd">${f.format(new Date(2024, 0, 1 + k))}</span>`; } catch { wd = ''; }
+    let html = wd + '<span></span>'.repeat(offset);
+    for (let day = 1; day <= days; day++) {
+      const k = dateKey(new Date(y, mo, day));
+      const [n, tier] = dailyPlan(k);
+      const future = k > today, done = !!progress.daily.done[k];
+      html += `<button type="button" class="day t${tier}${done ? ' done' : ''}${k === today ? ' today' : ''}${k === dailyDate ? ' cur' : ''}" data-k="${k}"${future ? ' disabled' : ''} aria-label="${longDate(k)}, ${t('tier' + tier)} ${n}×${n}${done ? ' ✓' : ''}">
+        <b>${day}</b>${done ? '<svg class="dc"><use href="#cat"/></svg>' : `<small>${n}×${n}</small>`}</button>`;
+    }
+    $('archGrid').innerHTML = html;
+    let title = `${y}-${pad(mo + 1)}`;
+    try { title = new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' }).format(first); } catch { /* keep numeric */ }
+    $('archTitle').textContent = title;
+    const now = new Date();
+    $('archNext').disabled = y > now.getFullYear() || (y === now.getFullYear() && mo >= now.getMonth());
+    const doneThisMonth = Object.keys(progress.daily.done).filter(k => k.startsWith(`${y}-${pad(mo + 1)}`)).length;
+    $('archCount').textContent = t('archDone', { k: doneThisMonth });
+  }
+  $('archPrev').addEventListener('click', () => { archMonth.setMonth(archMonth.getMonth() - 1); renderArchive(); });
+  $('archNext').addEventListener('click', () => { archMonth.setMonth(archMonth.getMonth() + 1); renderArchive(); });
+  $('archGrid').addEventListener('click', e => {
+    const b = e.target.closest('[data-k]');
+    if (!b || b.disabled) return;
+    pausedByDialog = false;
+    $('dlgArchive').close();
+    loadMode('daily', { date: b.dataset.k });
   });
 
   function openLevels() {
@@ -564,7 +625,7 @@
       const k = i + 1, open = levelOpen(k), st = progress.stars[k] || 0;
       const tierColor = ['r2', 'r1', 'r0', 'r4'][L.tier];
       return `<button type="button" class="lvl${k === cur ? ' cur' : ''}" data-k="${k}" style="--rc:var(--${tierColor})"${open ? '' : ' disabled'} aria-label="${t('levelName', { k, total: LEVELS.length })}, ${t('tier' + L.tier)}">
-        ${open ? `${k}<small>${L.n}×${L.n}</small><span class="st">${starIcons(st)}</span>` : '<svg class="lkb"><use href="#i-lock"/></svg>'}</button>`;
+        ${open ? `${k}<small>${L.n}×${L.n}</small><span class="st">${starIcons(st)}</span>` : `<svg class="lkb"><use href="#i-lock"/></svg><small>${k}</small>`}</button>`;
     }).join('');
     $('levelGrid').onclick = e => {
       const b = e.target.closest('[data-k]');
@@ -682,12 +743,20 @@
   // ---------- boot ----------
   applyLook();
   setLang(I.detect(store.get('lang', null)));
-  const h = location.hash.slice(1);
-  let m;
-  if (h === 'daily') loadMode('daily');
-  else if ((m = /^level-(\d+)$/.exec(h)) && levelOpen(+m[1])) loadMode('journey', { level: +m[1] });
-  else if ((m = /^f-(\d+)-(\d)-(\d+)$/.exec(h))) loadMode('free', { n: +m[1], tier: +m[2], seed: +m[3] });
-  else loadMode(mode);
+  function route(h, fallback) {
+    let m;
+    if (h === 'daily') loadMode('daily');
+    else if ((m = /^daily-(\d{4}-\d\d-\d\d)$/.exec(h))) loadMode('daily', { date: m[1] });
+    else if ((m = /^level-(\d+)$/.exec(h)) && levelOpen(+m[1])) loadMode('journey', { level: +m[1] });
+    else if ((m = /^f-(\d+)-(\d)-(\d+)$/.exec(h))) loadMode('free', { n: +m[1], tier: +m[2], seed: +m[3] });
+    else if (fallback) loadMode(mode);
+  }
+  window.addEventListener('hashchange', () => {
+    const h = location.hash.slice(1);
+    if (!meta || h === meta.id || (h === 'daily' && meta.kind === 'daily' && meta.date === todayKey())) return;
+    route(h, false);
+  });
+  route(location.hash.slice(1), true);
   if (!store.get('seenHelp', false)) setTimeout(openHelp, 400);
 
   if ('serviceWorker' in navigator && /^https:$/.test(location.protocol) && /github\.io$/.test(location.hostname)) {
