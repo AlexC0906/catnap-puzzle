@@ -365,7 +365,15 @@ th:first-child,td:first-child{text-align:left}
   .modebar{border-radius:0 0 18px 18px;padding:8px}
   .seg{width:100%;justify-content:space-between}
   .seg button{flex:1;padding:0 6px;min-width:0}
-  .modebar .pill{flex:1}
+  .modebar .pill{flex:1;min-height:40px;padding:0 10px}
+  .modebar{gap:6px}
+  .modebar .grow{display:none}
+  .modebar .seg{order:0}
+  .modebar .seg button{min-height:34px}
+  #marBtn{order:3}
+  #freeNew{order:4}
+  .dayInfo{width:100%;gap:8px}
+  .side .controls,.side .hintBox{order:-1}
   .play{padding-top:12px}
   .boardFrame{padding:6px;border-radius:16px}
   .board{border-radius:11px}
