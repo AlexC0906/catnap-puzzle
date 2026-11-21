@@ -56,3 +56,20 @@ test('the mascot can be petted with a finger', async ({ page }) => {
   // the page must not have scrolled while petting
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
+
+test('the mascot’s speech bubble does not cover the mode bar on a phone', async ({ page }) => {
+  for (const mode of ['daily', 'free', 'journey']) {
+    await open(page, { mode });
+    await page.evaluate(() => {
+      const L = window.CatnapI18n.STRINGS;
+      const all = Object.values(L).flatMap(x => x.sayFacts.map(f => `${x.sayFactIntro} ${f}`));
+      const b = document.getElementById('bubble');
+      b.textContent = all.sort((a, c) => c.length - a.length)[0];
+      b.hidden = false;
+    });
+    await page.waitForTimeout(400);
+    const bubble = await page.locator('#bubble').boundingBox(), bar = await page.locator('#modebar').boundingBox();
+    expect(bubble.y, mode).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+    expect(bubble.x, 'bubble stays on screen').toBeGreaterThanOrEqual(0);
+  }
+});

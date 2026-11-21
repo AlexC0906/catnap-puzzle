@@ -97,7 +97,8 @@ sw.js, manifest.webmanifest   offline support / install
 src/leaderboard.js    online leaderboard client (Supabase REST)
 src/config.js         leaderboard project settings
 supabase/schema.sql   database tables, security rules, validating function
-test/                 Node tests
+test/                 logic tests (Node)
+tests/e2e/            browser tests (Playwright)
 ```
 
 ## Online leaderboard
@@ -109,13 +110,17 @@ To use your own project, run `supabase/schema.sql` in the Supabase SQL Editor an
 ## Development
 
 ```bash
-npm test               # run all tests
+npm test               # logic and puzzle tests (Node, no browser)
+npm run test:e2e       # 41 browser tests on desktop and an emulated phone
+npm run serve          # play locally at http://127.0.0.1:4173
 npm run build:levels   # regenerate the Journey levels
 ```
 
+The browser tests need Chromium once: `npx playwright install chromium` (or set `CHROME_PATH` to an installed Chrome). They never touch the live leaderboard: the test server hides the real config and the leaderboard tests use a fake Supabase.
+
 To play locally, serve the folder with any static server (for example `python3 -m http.server`) and open it in a browser. Opening `index.html` directly also works.
 
-The tests check, for every size and difficulty, that puzzles are valid, have exactly one solution, can be solved by logic alone, and that every logic step is correct. CI runs them on every push.
+The logic tests check, for every size and difficulty, that puzzles are valid, have exactly one solution, can be solved by logic alone, and that every logic step is correct. The browser tests play the real game: controls, every mode, hints, the Workshop, a full Marathon, the mascot, the share image, achievements and the leaderboard client, on desktop and on a phone, and fail on any page error. GitHub Actions runs both suites on every push. See [CHANGELOG.md](CHANGELOG.md) for the history.
 
 ## License
 

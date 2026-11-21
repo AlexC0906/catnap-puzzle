@@ -90,8 +90,12 @@ test('the marathon score goes to this week’s board', async ({ page }) => {
   await open(page, { mode: 'free', settings: { playerName: 'Ion' } });
   await page.click('#marBtn');
   await page.click('#marGo');
+  // the first marathon board is generated in the background: wait for it
+  await expect(page.locator('#puzzleName')).toHaveText('Marathon · #1');
   await solve(page);
-  await runUntil(page, () => page.locator('#marCard').filter({ hasText: 'Time’s up' }).isVisible());
+  // jump close to the end (5:00 of 5:15), then step so the network reply can arrive
+  await page.clock.runFor(5 * 60 * 1000);
+  await runUntil(page, () => page.locator('#marCard').filter({ hasText: 'Time’s up' }).isVisible(), { max: 60 });
   await expect(page.locator('#marCard')).toContainText('Rank 1 of 1');
   const week = await page.evaluate(() => window.CatnapLB.isoWeek());
   expect(db.posts.at(-1)).toMatchObject({ p_board: `marathon-${week}`, p_score: 25, p_name: 'Ion' });

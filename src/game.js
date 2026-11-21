@@ -952,6 +952,7 @@
     const tok = ++demoTok;
     const live = () => tok === demoTok && $('dlgHelp').open;
     drawHelpBoard(false);
+    $('helpExampleLabel').textContent = t('demoLabel');
     const n = DEMO.L.n, cellsEl = [...DEMO.board.children];
     const g = LG.makeGeometry(n, DEMO.regions), st = LG.newState(g);
     $('demoText').textContent = t('demoStart');
@@ -991,6 +992,7 @@
   function openHelp() {
     demoTok++;
     drawHelpBoard(true);
+    $('helpExampleLabel').textContent = t('helpExample');
     $('demoText').textContent = '';
     $('demoBtn').disabled = false;
     $('demoBtn').textContent = t('demoPlay');

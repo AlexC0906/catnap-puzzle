@@ -1,5 +1,5 @@
 // Catnap — offline support. Bump VERSION whenever app files change.
-const VERSION = 'catnap-v3.0.0';
+const VERSION = 'catnap-v3.1.0';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'src/config.js', 'src/i18n.js', 'src/engine.js', 'src/logic.js', 'src/levels.js', 'src/audio.js', 'src/music.js', 'src/achievements.js', 'src/leaderboard.js', 'src/game.js', 'src/worker.js',

@@ -5,12 +5,33 @@ test('first visit shows How to play, and its walkthrough solves a board step by 
   await open(page, { mode: 'free', seenHelp: false });
   await page.clock.runFor(800);
   await expect(page.locator('#dlgHelp')).toBeVisible();
+  await expect(page.locator('#helpExampleLabel')).toHaveText('A solved board looks like this:');
   await page.click('#demoBtn');
   await page.clock.runFor(2000);
+  await expect(page.locator('#helpExampleLabel')).toHaveText('Follow the reasoning, move by move:');
   await expect(page.locator('#demoText')).toContainText('cushion has only one free spot');
   for (let k = 0; k < 12; k++) await page.clock.runFor(4000);
   await expect(page.locator('#demoText')).toContainText('Done!');
   await expect(page.locator('#helpBoard .c')).toHaveCount(5);
+});
+
+test('the mascot’s speech bubble never covers the mode bar', async ({ page }) => {
+  await open(page, { mode: 'free' });
+  // the longest line the mascot can say, in either language
+  const longest = await page.evaluate(() => {
+    const all = [];
+    for (const L of Object.values(window.CatnapI18n.STRINGS)) {
+      L.sayFacts.forEach(f => all.push(`${L.sayFactIntro} ${f}`));
+      ['sayPet', 'sayConflict', 'sayWin', 'sayStuck'].forEach(k => all.push(...L[k]));
+      L.sayHello.forEach(h => all.push(`${h} ${L.petHint}`));
+    }
+    return all.sort((a, b) => b.length - a.length)[0];
+  });
+  await page.evaluate(text => { const b = document.getElementById('bubble'); b.textContent = text; b.hidden = false; }, longest);
+  await page.waitForTimeout(400); // let the entrance animation finish
+  const bubble = await page.locator('#bubble').boundingBox(), bar = await page.locator('#modebar').boundingBox();
+  expect(bubble.y, longest).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+  expect(bubble.x, 'bubble stays on screen').toBeGreaterThanOrEqual(0);
 });
 
 test('the mascot purrs when stroked and talks when tapped', async ({ page }) => {

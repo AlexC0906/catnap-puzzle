@@ -112,7 +112,8 @@ button:focus-visible,input:focus-visible+span,a:focus-visible{outline:3px solid 
 .mascot.pet .eyes.happy{display:inline}
 .mascot.pet .mHead{transform:rotate(var(--tilt,0deg)) translateY(-2px)}
 .mascot.hop .mHead{animation:hop .45s ease-in-out}
-.bubble{position:absolute;bottom:calc(100% + 28px);right:calc(9% + 120px);max-width:min(280px,60%);background:var(--card);color:var(--ink);border:2.5px solid var(--line);border-radius:18px 18px 4px 18px;padding:8px 12px;font-weight:700;font-size:15px;line-height:1.35;box-shadow:0 4px 0 var(--line);z-index:9;animation:pop .25s cubic-bezier(.3,1.6,.6,1);pointer-events:none;text-wrap:pretty}
+.bubble{position:absolute;bottom:calc(100% + 8px);right:calc(9% + 124px);width:max-content;max-width:min(430px,calc(100vw - 260px));background:var(--card);color:var(--ink);border:2.5px solid var(--line);border-radius:16px 16px 4px 16px;padding:6px 12px;font-weight:700;font-size:14px;line-height:1.3;box-shadow:0 3px 0 var(--line);z-index:9;animation:bubbleIn .22s ease-out;transform-origin:100% 100%;pointer-events:none;text-wrap:pretty}
+@keyframes bubbleIn{from{opacity:0;transform:translateY(6px) scale(.94)}}
 .petLayer{position:absolute;right:9%;bottom:100%;width:132px;height:150px;pointer-events:none;z-index:8}
 .petLayer svg{position:absolute;bottom:20px;width:18px;height:18px;color:#ff6f8e;animation:heart 1.4s ease-out forwards}
 @keyframes heart{0%{transform:translate(0,0) scale(.4);opacity:0}15%{opacity:1;transform:translate(0,-10px) scale(1)}100%{transform:translate(var(--dx),-110px) scale(.8);opacity:0}}
@@ -346,7 +347,7 @@ th:first-child,td:first-child{text-align:left}
 @media(max-width:600px){
   .boardWrap{padding-top:48px}
   .mascot{width:96px;height:67px;top:-61px}
-  .bubble{right:calc(9% + 90px);bottom:calc(100% + 18px);font-size:14px;max-width:62%}
+  .bubble{right:calc(9% + 92px);bottom:calc(100% + 4px);max-width:calc(91% - 84px);font-size:12.5px;padding:5px 9px;border-radius:14px 14px 4px 14px}
   .petLayer{width:96px}
   .top{padding-top:12px;flex-wrap:nowrap;gap:8px}
   .brand{gap:8px}
