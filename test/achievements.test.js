@@ -42,3 +42,16 @@ test('progress-based achievements: streaks, chapters, stars', () => {
   const got2 = A.check(p, null);
   assert.ok(got2.includes('wanderer') && got2.includes('constellation'));
 });
+
+test('every line the mascot says is short enough for its speech bubble', () => {
+  global.window = globalThis;
+  require('../src/i18n.js');
+  for (const [lang, L] of Object.entries(globalThis.CatnapI18n.STRINGS)) {
+    const lines = [
+      ...L.sayFacts.map(f => `${L.sayFactIntro} ${f}`),
+      ...L.sayPet, ...L.sayConflict, ...L.sayWin, ...L.sayStuck,
+      ...L.sayHello.map(h => `${h} ${L.petHint}`)
+    ];
+    for (const line of lines) assert.ok(line.length <= 62, `${lang}: "${line}" is ${line.length} chars (max 62)`);
+  }
+});

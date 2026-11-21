@@ -64,6 +64,7 @@ test('the mascot’s speech bubble does not cover the mode bar on a phone', asyn
       const L = window.CatnapI18n.STRINGS;
       const all = Object.values(L).flatMap(x => x.sayFacts.map(f => `${x.sayFactIntro} ${f}`));
       const b = document.getElementById('bubble');
+      b.style.fontFamily = '"DejaVu Sans", Verdana, sans-serif'; // worst case: wide fallback font
       b.textContent = all.sort((a, c) => c.length - a.length)[0];
       b.hidden = false;
     });

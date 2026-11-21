@@ -27,7 +27,8 @@ test('the mascot’s speech bubble never covers the mode bar', async ({ page }) 
     }
     return all.sort((a, b) => b.length - a.length)[0];
   });
-  await page.evaluate(text => { const b = document.getElementById('bubble'); b.textContent = text; b.hidden = false; }, longest);
+  // measure with a wide fallback font: the worst case if the web font does not load
+  await page.evaluate(text => { const b = document.getElementById('bubble'); b.style.fontFamily = '"DejaVu Sans", Verdana, sans-serif'; b.textContent = text; b.hidden = false; }, longest);
   await page.waitForTimeout(400); // let the entrance animation finish
   const bubble = await page.locator('#bubble').boundingBox(), bar = await page.locator('#modebar').boundingBox();
   expect(bubble.y, longest).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
